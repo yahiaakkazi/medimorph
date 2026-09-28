@@ -1,0 +1,1787 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MediMorph Clinical Twin</title>
+<meta name="description" content="MediMorph — a clinical digital twin of a 4D-printed, dual-stimuli shape-memory gastrointestinal stent." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Condensed:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#03060a', abyss: '#070d14', panel: 'rgba(7,15,22,0.62)',
+          cy: '#5ee7ff', teal: '#2dd4bf', amber: '#ffb547', alert: '#ff5a6a', nir: '#c77dff',
+          mut: '#6f8c99', txt: '#d3e9ef', line: 'rgba(94,231,255,0.16)'
+        },
+        fontFamily: {
+          sans: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
+          cond: ['"IBM Plex Sans Condensed"', '"IBM Plex Sans"', 'sans-serif'],
+          mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace']
+        }
+      }
+    }
+  };
+</script>
+<style>
+  :root { --cy:#5ee7ff; --teal:#2dd4bf; --amber:#ffb547; --alert:#ff5a6a; --nir:#c77dff; --mut:#6f8c99; --txt:#d3e9ef; --line:rgba(94,231,255,.16); --bg:#03060a; }
+  html { background: var(--bg); scrollbar-width: none; }
+  html::-webkit-scrollbar { display: none; }
+  body { background: var(--bg); color: var(--txt); font-family: "IBM Plex Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  html.lenis, html.lenis body { height: auto; }
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+  #gl { position: fixed; inset: 0; z-index: 0; }
+  #gl canvas { display: block; width: 100%; height: 100%; }
+
+  /* Overlays */
+  .scan { position: fixed; inset: 0; z-index: 5; pointer-events: none; opacity: .5;
+    background: repeating-linear-gradient(to bottom, rgba(94,231,255,.028) 0 1px, transparent 1px 3px); mix-blend-mode: screen; }
+  .gridfx { position: fixed; inset: 0; z-index: 4; pointer-events: none;
+    background-image: linear-gradient(rgba(94,231,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(94,231,255,.035) 1px, transparent 1px);
+    background-size: 80px 80px; mask-image: radial-gradient(ellipse at center, transparent 40%, #000 95%); -webkit-mask-image: radial-gradient(ellipse at center, transparent 40%, #000 95%); }
+
+  /* Panels with corner brackets */
+  .panel { position: relative; background: linear-gradient(180deg, rgba(8,18,27,.72), rgba(5,11,17,.62)); border: 1px solid var(--line);
+    backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2); }
+  .panel::before, .panel::after { content: ""; position: absolute; width: 10px; height: 10px; border-color: var(--cy); opacity: .85; pointer-events: none; }
+  .panel::before { top: -1px; left: -1px; border-top: 1px solid; border-left: 1px solid; }
+  .panel::after { bottom: -1px; right: -1px; border-bottom: 1px solid; border-right: 1px solid; }
+  .panel.warn::before, .panel.warn::after { border-color: var(--amber); }
+  .panel.crit::before, .panel.crit::after { border-color: var(--alert); }
+  .hl { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--mut); }
+  .val { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .chip { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; padding: 2px 7px; border: 1px solid currentColor; border-radius: 2px; white-space: nowrap; }
+  .blink { animation: blink 1.4s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+  .meter { height: 4px; background: rgba(94,231,255,.1); position: relative; overflow: hidden; }
+  .meter > i { position: absolute; inset: 0 auto 0 0; background: var(--cy); box-shadow: 0 0 8px var(--cy); transition: width .25s linear; }
+  .ticks { background-image: repeating-linear-gradient(90deg, rgba(94,231,255,.35) 0 1px, transparent 1px 10%); height: 4px; }
+
+  /* Narrative cards */
+  .story { position: relative; z-index: 10; pointer-events: none; }
+  .step { min-height: 100vh; display: flex; align-items: center; }
+  .card { pointer-events: auto; max-width: 440px; opacity: .15; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
+  .card.on { opacity: 1; transform: none; }
+  .card h2 { font-family: "IBM Plex Sans Condensed", sans-serif; }
+  .card p { color: #a9c3cc; line-height: 1.6; font-size: 14.5px; }
+  .card b { color: var(--txt); font-weight: 500; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-family: "IBM Plex Mono", monospace; font-size: 11.5px; }
+  .kv dt { color: var(--mut); } .kv dd { color: var(--txt); text-align: right; }
+
+  /* Instruments (fixed right column, act-specific) */
+  .inst { opacity: 0; visibility: hidden; transform: translateX(16px); transition: opacity .5s, transform .5s, visibility .5s; }
+  .inst.on { opacity: 1; visibility: visible; transform: none; }
+  .btn { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--line); padding: 8px 10px; color: var(--txt); background: rgba(94,231,255,.04); transition: background .2s, border-color .2s, color .2s, box-shadow .2s; }
+  .btn:hover:not(:disabled) { background: rgba(94,231,255,.12); border-color: var(--cy); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn.hot { border-color: var(--amber); color: var(--amber); box-shadow: inset 0 0 18px rgba(255,181,71,.15); }
+  .btn.nir { border-color: var(--nir); color: var(--nir); box-shadow: inset 0 0 18px rgba(199,125,255,.18); }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: linear-gradient(90deg, #3aa0ff, #2dd4bf 45%, #ffb547 60%, #ff5a6a); outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 18px; background: #e8fbff; border: 1px solid #03060a; box-shadow: 0 0 10px var(--cy); cursor: ew-resize; }
+  input[type=range]::-moz-range-thumb { width: 12px; height: 18px; background: #e8fbff; border: 1px solid #03060a; box-shadow: 0 0 10px var(--cy); cursor: ew-resize; border-radius: 0; }
+
+  /* Act nav */
+  .nav a { display: flex; align-items: center; gap: 10px; color: var(--mut); transition: color .3s; }
+  .nav a i { width: 18px; height: 1px; background: currentColor; transition: width .3s; }
+  .nav a.on { color: var(--cy); } .nav a.on i { width: 34px; box-shadow: 0 0 6px var(--cy); }
+  .nav a:hover { color: var(--txt); }
+
+  /* Reticle */
+  .reticle { position: fixed; left: 50%; top: 50%; width: 120px; height: 120px; transform: translate(-50%,-50%); z-index: 6; pointer-events: none; transition: opacity .6s; }
+  .ternary { touch-action: none; cursor: crosshair; }
+  #loader { transition: opacity .8s ease, visibility .8s; }
+  #loader.done { opacity: 0; visibility: hidden; }
+  .glitch { text-shadow: 0 0 12px rgba(94,231,255,.35); }
+  @media (max-width: 1023px) {
+    .card { max-width: 100%; }
+    .inst { transform: translateY(16px); }
+  }
+  @media (prefers-reduced-motion: reduce) { .card, .inst { transition: none; } .blink { animation: none; } }
+</style>
+</head>
+<body>
+<div id="loader" class="fixed inset-0 z-[100] bg-ink flex items-center justify-center">
+  <div class="text-center px-6">
+    <div class="hl mb-4">MediMorph · Clinical Digital Twin</div>
+    <div class="val text-cy text-sm tracking-widest">INITIALISING PATIENT TWIN <span id="ldp">0</span>%</div>
+    <div class="meter w-64 mt-4 mx-auto"><i id="ldbar" style="width:0%"></i></div>
+    <div class="hl mt-4" id="ldmsg">compiling procedural shaders</div>
+    <div id="nogl" class="hidden mt-6 text-alert text-sm max-w-sm mx-auto">WebGL2 is unavailable in this browser. The narrative remains readable, but the 3D twin cannot start.</div>
+  </div>
+</div>
+
+<div id="gl" aria-hidden="true"></div>
+<div class="gridfx"></div>
+<div class="fixed inset-0 z-[3] pointer-events-none" style="background:linear-gradient(90deg, rgba(3,6,10,.72) 0%, rgba(3,6,10,.35) 30%, transparent 48%, transparent 70%, rgba(3,6,10,.45) 100%)"></div>
+<div class="scan"></div>
+
+<!-- Endoscopic reticle -->
+<svg class="reticle" id="reticle" viewBox="0 0 120 120" fill="none" stroke="#5ee7ff" stroke-width="1" aria-hidden="true">
+  <circle cx="60" cy="60" r="36" stroke-opacity=".35" stroke-dasharray="2 5" />
+  <circle cx="60" cy="60" r="2" fill="#5ee7ff" stroke="none" />
+  <path d="M60 8v14M60 98v14M8 60h14M98 60h14" stroke-opacity=".8" />
+  <path d="M26 26l8 8M94 26l-8 8M26 94l8-8M94 94l-8-8" stroke-opacity=".35" />
+</svg>
+
+<!-- Top bar -->
+<header class="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 lg:px-6 h-12 border-b border-line bg-ink/50 backdrop-blur-md">
+  <div class="flex items-center gap-3">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5ee7ff" stroke-width="1.3" aria-hidden="true"><path d="M4 7c3 0 3 10 8 10s5-10 8-10M4 17c3 0 3-10 8-10s5 10 8 10" /><circle cx="12" cy="12" r="10.5" stroke-opacity=".3"/></svg>
+    <span class="font-cond font-medium tracking-[.34em] text-[13px]">MEDIMORPH</span>
+    <span class="hl hidden md:inline">Clinical Digital Twin · build 1.0</span>
+  </div>
+  <div class="hidden md:flex items-center gap-2 hl"><span id="actcode" class="text-cy">ACT 01</span><span>/</span><span id="acttitle" class="text-txt">Physiological Environment</span></div>
+  <div class="flex items-center gap-4 hl">
+    <span class="text-alert"><span class="blink">●</span> SIM</span>
+    <span id="clock" class="val">00:00:00</span>
+    <span id="fps" class="val hidden sm:inline">-- FPS</span>
+  </div>
+</header>
+
+<!-- Act navigation -->
+<nav class="nav fixed left-4 lg:left-6 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col gap-4 hl" aria-label="Acts">
+  <a href="#act1" data-act="0" class="on"><i></i>01 Environment</a>
+  <a href="#act2" data-act="1"><i></i>02 Trilemma</a>
+  <a href="#act3" data-act="2"><i></i>03 4D Printing</a>
+  <a href="#act4" data-act="3"><i></i>04 Actuation</a>
+  <a href="#act5" data-act="4"><i></i>05 Inverse Design</a>
+</nav>
+
+<!-- Instrument rail -->
+<aside id="rail" class="fixed z-30 pointer-events-none left-3 right-3 bottom-14 h-[38vh] lg:h-auto lg:left-auto lg:right-6 lg:top-16 lg:bottom-14 lg:w-[350px]">
+
+  <!-- INST 0 · Physiological telemetry -->
+  <section id="inst0" class="inst on panel pointer-events-auto absolute inset-0 lg:inset-auto lg:top-0 lg:inset-x-0 p-4 overflow-y-auto">
+    <div class="flex items-center justify-between mb-3"><span class="hl text-cy">Telemetry · GI lumen</span><span class="chip text-teal">live</span></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <div class="hl">Gastric pH</div>
+        <div class="val text-2xl text-amber" id="phG">2.41</div>
+        <canvas id="spG" class="w-full h-8 mt-1" width="300" height="64"></canvas>
+        <div class="flex justify-between hl mt-1"><span>1.5</span><span>range</span><span>3.5</span></div>
+      </div>
+      <div>
+        <div class="hl">Intestinal pH</div>
+        <div class="val text-2xl text-teal" id="phI">7.02</div>
+        <canvas id="spI" class="w-full h-8 mt-1" width="300" height="64"></canvas>
+        <div class="flex justify-between hl mt-1"><span>6.5</span><span>range</span><span>7.5</span></div>
+      </div>
+    </div>
+    <div class="mt-4 pt-3 border-t border-line">
+      <div class="flex justify-between items-baseline"><span class="hl">Peristaltic load</span><span class="val text-xs text-txt"><span id="peFreq">11.8</span> cpm · <span id="peP">34</span> mmHg</span></div>
+      <canvas id="spP" class="w-full h-10 mt-2" width="600" height="80"></canvas>
+    </div>
+    <div class="mt-3 pt-3 border-t border-line">
+      <div class="flex justify-between items-baseline"><span class="hl">Cyclic multiaxial fatigue</span><span class="val text-xs text-amber" id="cyc">0</span></div>
+      <dl class="kv mt-2">
+        <dt>radial compression</dt><dd><span id="ldR">0.0</span> %</dd>
+        <dt>axial strain</dt><dd><span id="ldA">0.0</span> %</dd>
+        <dt>torsion</dt><dd><span id="ldT">0.0</span> °/cm</dd>
+        <dt>projected / year</dt><dd>≈ 6.2 × 10⁶ cycles</dd>
+      </dl>
+    </div>
+    <div class="mt-3 pt-3 border-t border-line">
+      <div class="flex justify-between"><span class="hl">Device in view</span><span class="chip text-mut" id="devChip">none</span></div>
+      <div class="val text-sm mt-2 text-txt" id="devName">—</div>
+      <div class="flex justify-between hl mt-2"><span>peak strut stress</span><span class="val text-txt" id="devStress">—</span></div>
+      <div class="meter mt-1"><i id="devStressBar" style="width:0%;background:#ffb547;box-shadow:0 0 8px #ffb547"></i></div>
+      <div class="flex justify-between hl mt-2"><span>adaptive response</span><span class="val text-alert" id="devAdapt">—</span></div>
+    </div>
+  </section>
+
+  <!-- INST 1 · Trilemma -->
+  <section id="inst1" class="inst panel pointer-events-auto absolute inset-0 lg:inset-auto lg:top-0 lg:inset-x-0 p-4 overflow-y-auto">
+    <div class="flex items-center justify-between mb-2"><span class="hl text-cy">Design space · static stent</span><span class="chip text-amber" id="triMode">auto</span></div>
+    <svg id="tern" class="ternary w-full" viewBox="0 0 300 250" aria-label="Trilemma design point, drag to explore">
+      <defs><linearGradient id="tg" x1="0" x2="1"><stop offset="0" stop-color="#5ee7ff" stop-opacity=".16"/><stop offset="1" stop-color="#ffb547" stop-opacity=".1"/></linearGradient></defs>
+      <polygon points="150,18 272,228 28,228" fill="url(#tg)" stroke="#5ee7ff" stroke-opacity=".5" />
+      <g stroke="#5ee7ff" stroke-opacity=".12">
+        <line x1="89" y1="123" x2="211" y2="123"/><line x1="119.5" y1="70.5" x2="241.5" y2="175.5"/><line x1="180.5" y1="70.5" x2="58.5" y2="175.5"/>
+      </g>
+      <path id="triPath" d="" fill="none" stroke="#2dd4bf" stroke-width="1.4" stroke-dasharray="3 4" opacity="0" />
+      <text x="150" y="11" text-anchor="middle" class="hl" fill="#d3e9ef" font-size="9">RADIAL FORCE</text>
+      <text x="282" y="244" text-anchor="end" class="hl" fill="#d3e9ef" font-size="9">ANTI-MIGRATION</text>
+      <text x="18" y="244" text-anchor="start" class="hl" fill="#d3e9ef" font-size="9">DELIVERABILITY</text>
+      <g id="triHandle"><circle r="13" fill="#ffb547" fill-opacity=".12" stroke="#ffb547" stroke-opacity=".6"/><circle r="3.5" fill="#ffb547"/></g>
+    </svg>
+    <div class="space-y-3 mt-1" id="triBars">
+      <div><div class="flex justify-between hl"><span class="text-txt">Radial force</span><span>vs</span><span class="text-alert">Tissue trauma</span></div>
+        <div class="flex gap-1 mt-1"><div class="meter flex-1"><i id="b0a"></i></div><div class="meter flex-1 [transform:scaleX(-1)]"><i id="b0b" style="background:#ff5a6a;box-shadow:0 0 8px #ff5a6a"></i></div></div></div>
+      <div><div class="flex justify-between hl"><span class="text-txt">Anti-migration</span><span>vs</span><span class="text-amber">Safe retrieval</span></div>
+        <div class="flex gap-1 mt-1"><div class="meter flex-1"><i id="b1a"></i></div><div class="meter flex-1 [transform:scaleX(-1)]"><i id="b1b" style="background:#ffb547;box-shadow:0 0 8px #ffb547"></i></div></div></div>
+      <div><div class="flex justify-between hl"><span class="text-txt">Deliverability</span><span>vs</span><span class="text-amber">Conformability</span></div>
+        <div class="flex gap-1 mt-1"><div class="meter flex-1"><i id="b2a"></i></div><div class="meter flex-1 [transform:scaleX(-1)]"><i id="b2b" style="background:#ffb547;box-shadow:0 0 8px #ffb547"></i></div></div></div>
+    </div>
+    <dl class="kv mt-4 pt-3 border-t border-line">
+      <dt>radial force</dt><dd><span id="mRF">—</span> N</dd>
+      <dt>peak contact pressure</dt><dd><span id="mCP">—</span> kPa</dd>
+      <dt>migration risk</dt><dd><span id="mMR">—</span> %</dd>
+      <dt>extraction force</dt><dd><span id="mEF">—</span> N</dd>
+      <dt>crossing profile</dt><dd><span id="mCR">—</span> Fr</dd>
+      <dt>edge straightening load</dt><dd><span id="mSL">—</span> N</dd>
+    </dl>
+    <div class="flex gap-2 mt-3"><button class="btn flex-1" id="triAuto">Auto tour</button><button class="btn flex-1" id="tri4d">Show 4D path</button></div>
+  </section>
+
+  <!-- INST 2 · Thermomechanical programming -->
+  <section id="inst2" class="inst panel pointer-events-auto absolute inset-0 lg:inset-auto lg:top-0 lg:inset-x-0 p-4 overflow-y-auto">
+    <div class="flex items-center justify-between mb-3"><span class="hl text-cy">Thermomechanical programming</span><span class="chip text-teal" id="progState">printing</span></div>
+    <ol class="space-y-1.5 val text-[11.5px]" id="progSteps">
+      <li data-s="0">① 4D print · permanent shape (expanded)</li>
+      <li data-s="1">② Heat above T<sub>trans</sub> · rubbery state</li>
+      <li data-s="2">③ Crimp · apply radial strain ε<sub>m</sub></li>
+      <li data-s="3">④ Cool under load · switching segments vitrify</li>
+      <li data-s="4">⑤ Unload · temporary shape fixed (R<sub>f</sub>)</li>
+      <li data-s="5">⑥ Reheat · entropic recovery (R<sub>r</sub>)</li>
+    </ol>
+    <div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-line text-center">
+      <div><div class="hl">T</div><div class="val text-lg text-amber"><span id="pT">22.0</span>°C</div></div>
+      <div><div class="hl">σ</div><div class="val text-lg"><span id="pS">0.00</span><span class="text-xs text-mut"> MPa</span></div></div>
+      <div><div class="hl">ε</div><div class="val text-lg"><span id="pE">0.0</span><span class="text-xs text-mut"> %</span></div></div>
+    </div>
+    <div class="mt-3"><div class="flex justify-between hl"><span>Storage modulus E'</span><span class="val text-txt" id="pMod">1.9 GPa</span></div><div class="meter mt-1"><i id="pModBar" style="width:90%"></i></div></div>
+    <div class="grid grid-cols-2 gap-3 mt-3 kv"><dt>shape fixity R<sub>f</sub></dt><dd id="pRf">—</dd><dt>shape recovery R<sub>r</sub></dt><dd id="pRr">—</dd><dt>T<sub>trans</sub> (DMA)</dt><dd>36.8 °C</dd><dt>print layer</dt><dd id="pLay">—</dd></div>
+    <div class="mt-3 pt-3 border-t border-line">
+      <div class="flex justify-between hl"><span>Network state</span><span id="netState" class="text-cy">glassy · frozen</span></div>
+      <canvas id="netCv" class="w-full h-24 mt-2" width="640" height="200"></canvas>
+    </div>
+  </section>
+
+  <!-- INST 3 · Dual-stimuli deployment console -->
+  <section id="inst3" class="inst panel pointer-events-auto absolute inset-0 lg:inset-auto lg:top-0 lg:inset-x-0 p-4 overflow-y-auto">
+    <div class="flex items-center justify-between mb-2"><span class="hl text-cy">Deployment console</span><span class="chip text-teal" id="depState">crimped · delivery</span></div>
+    <div>
+      <div class="flex justify-between hl"><span>Local temperature</span><span class="val text-amber text-sm"><span id="tempV">24.0</span> °C</span></div>
+      <input id="tempS" type="range" min="20" max="50" step="0.1" value="24" class="mt-2" aria-label="Local temperature" />
+      <div class="relative h-3 hl mt-1 whitespace-nowrap"><span class="absolute left-0">20</span><span class="absolute" style="left:56.6%;transform:translateX(-50%)">37 · T₁</span><span class="absolute" style="left:83.3%;transform:translateX(-50%)">45 · T₂</span><span class="absolute right-0">50</span></div>
+    </div>
+    <div class="grid grid-cols-3 gap-2 mt-3">
+      <button class="btn hot" id="bDeploy">37 °C deploy</button>
+      <button class="btn nir" id="bNir" disabled>NIR 808 nm</button>
+      <button class="btn" id="bReset">Reset</button>
+    </div>
+    <dl class="kv mt-3 pt-3 border-t border-line">
+      <dt>shape recovery</dt><dd><span id="dRec">0</span> %</dd>
+      <dt>stent diameter</dt><dd><span id="dDia">—</span> mm</dd>
+      <dt>wall contact pressure</dt><dd><span id="dCP">—</span> kPa</dd>
+      <dt>clearance to wall</dt><dd><span id="dGap">—</span> mm</dd>
+      <dt>NIR irradiance</dt><dd><span id="dNir">0.0</span> W/cm²</dd>
+    </dl>
+    <div class="hl mt-2 normal-case tracking-normal text-[11px] leading-snug" id="depLog">Awaiting thermal trigger. Sheath retracted, scaffold at 24 °C (glassy).</div>
+  </section>
+
+  <!-- INST 4 · Computational inverse design -->
+  <section id="inst4" class="inst panel pointer-events-auto absolute inset-0 lg:inset-auto lg:top-0 lg:inset-x-0 p-4 overflow-y-auto">
+    <div class="flex items-center justify-between mb-2"><span class="hl text-cy">Hyperelastic FEA</span>
+      <div class="flex gap-1"><button class="btn !py-1 !px-2 !text-[10px]" id="btnYeoh">Yeoh</button><button class="btn !py-1 !px-2 !text-[10px]" id="btnMR">Mooney-Rivlin</button></div></div>
+    <div class="val text-[11px] text-txt" id="wEq">W = Σ C<sub>i0</sub>(Ī₁−3)<sup>i</sup>, i = 1..3</div>
+    <canvas id="ssCv" class="w-full h-32 mt-2" width="640" height="260"></canvas>
+    <dl class="kv mt-2" id="mParams"></dl>
+    <dl class="kv mt-3 pt-3 border-t border-line">
+      <dt>element · nodes</dt><dd>C3D10H · 184 320</dd>
+      <dt>max von Mises</dt><dd><span id="fVM">—</span> MPa</dd>
+      <dt>max principal strain</dt><dd><span id="fPS">—</span> %</dd>
+      <dt>fatigue (10⁷ cyc, Goodman)</dt><dd>SF <span id="fSF">—</span></dd>
+    </dl>
+    <div class="mt-3 pt-3 border-t border-line">
+      <div class="flex justify-between hl"><span class="text-cy">PINN · patient geometry map</span><span class="val">epoch <span id="nnEp">0</span></span></div>
+      <svg id="nnSvg" class="w-full h-24 mt-2" viewBox="0 0 320 100"></svg>
+      <canvas id="lossCv" class="w-full h-16 mt-1" width="640" height="120"></canvas>
+      <div class="flex justify-between val text-[11px] mt-1"><span class="text-mut">ℒ = ℒ<sub>data</sub> + λ<sub>r</sub>ℒ<sub>PDE</sub> + λ<sub>b</sub>ℒ<sub>BC</sub></span><span id="nnLoss" class="text-teal">—</span></div>
+      <div class="flex justify-between hl mt-2"><span>geometry fit (Hausdorff)</span><span class="val text-txt"><span id="nnHd">—</span> mm</span></div>
+    </div>
+  </section>
+</aside>
+
+<!-- Endoscope picture-in-picture (rendered into this transparent window) -->
+<div id="pip" class="inst fixed z-20 hidden lg:block pointer-events-none border border-line" style="right:392px;bottom:58px;width:320px;height:200px">
+  <div class="absolute top-1.5 left-2 hl text-[9px] text-cy z-10">ENDO-CAM 02 · through-the-scope · <span class="text-alert blink">REC</span></div>
+  <div class="absolute bottom-1.5 right-2 hl text-[9px] z-10" id="pipT">T 24.0 °C</div>
+  <div class="absolute inset-0 z-10" style="background:radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,.8) 82%)"></div>
+  <span class="absolute -top-px -left-px w-2.5 h-2.5 border-t border-l border-cy"></span><span class="absolute -bottom-px -right-px w-2.5 h-2.5 border-b border-r border-cy"></span>
+</div>
+
+<!-- Persistent academic footer -->
+<footer class="fixed bottom-0 inset-x-0 z-40 h-10 flex items-center justify-between gap-4 px-4 lg:px-6 border-t border-line bg-ink/60 backdrop-blur-md">
+  <p class="text-[10.5px] sm:text-[11px] tracking-wide text-mut truncate"><span class="text-txt">MediMorph:</span> A collaborative research initiative between UTBM ICB CO2M Sevenans and ICGM CHU Montpellier.</p>
+  <div class="hidden sm:flex items-center gap-3 hl shrink-0"><span id="progTxt" class="val">000%</span><div class="w-28 meter"><i id="progBar" style="width:0%"></i></div></div>
+</footer>
+<main id="story" class="story px-4 md:pl-48 lg:pl-60 lg:pr-[400px]">
+
+  <!-- ============ ACT 1 ============ -->
+  <section id="act1" data-act="0">
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card on">
+        <div class="hl text-cy mb-4">Act 01 · Endoscopic viewport</div>
+        <h1 class="font-cond text-5xl md:text-7xl font-light tracking-tight leading-[.95] glitch">Medi<span class="text-cy">Morph</span></h1>
+        <p class="mt-5 !text-base">A clinical digital twin of a <b>4D-printed, dual-stimuli shape-memory stent</b> for the gastrointestinal tract, from the physiology it must survive to the computation that designs it for one patient.</p>
+        <div class="flex items-center gap-3 mt-8 hl"><span class="inline-block w-8 h-px bg-cy"></span>Scroll to advance the endoscope</div>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Physiological environment</div>
+        <h2 class="text-3xl font-light mb-3">A hostile, restless lumen</h2>
+        <p>The implant sits in acid. <b>Gastric pH swings between 1.5 and 3.5</b>, then climbs to <b>6.5–7.5</b> past the pylorus, with bile salts and proteases on top. That gradient degrades coatings and polymers at different rates along a single device.</p>
+        <p class="mt-3">The wall never stops moving. Peristaltic waves apply <b>cyclic multiaxial fatigue</b> (radial compression, axial shear and torsion at once), several million cycles per year. Watch the telemetry: every wave is a load case.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6" data-dev="0">
+        <div class="flex items-center gap-2 mb-3"><span class="chip text-cy">Gen 1</span><span class="hl">1992</span></div>
+        <h2 class="text-3xl font-light mb-3">Bare Metal Stent</h2>
+        <dl class="kv mb-4"><dt>material</dt><dd>316L stainless steel · Co-Cr</dd><dt>architecture</dt><dd>slotted-tube diamond cells</dd><dt>failure mode</dt><dd class="text-alert">In-stent restenosis 20–30 %</dd></dl>
+        <p>Rigid metal <b>cages the wall permanently</b>. The tissue reads the cage as a chronic injury and neointimal hyperplasia grows through the cells. In the viewport the mucosa closes over the struts and the lumen narrows again.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6 warn" data-dev="1">
+        <div class="flex items-center gap-2 mb-3"><span class="chip text-amber">Gen 2</span><span class="hl">2002</span></div>
+        <h2 class="text-3xl font-light mb-3">Drug-Eluting Stent</h2>
+        <dl class="kv mb-4"><dt>platform</dt><dd>metal + polymer carrier</dd><dt>payload</dt><dd>anti-proliferative (sirolimus-class)</dd><dt>failure mode</dt><dd class="text-alert">late stent thrombosis</dd></dl>
+        <p>A polymer coating <b>elutes anti-proliferative drugs</b> that suppress restenosis. The same drugs delay healing over the struts, so exposed metal and polymer remain thrombogenic for months or years. Watch for the clot forming on the struts.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6 warn" data-dev="2">
+        <div class="flex items-center gap-2 mb-3"><span class="chip text-teal">Gen 3</span><span class="hl">2012</span></div>
+        <h2 class="text-3xl font-light mb-3">Bioresorbable Scaffold</h2>
+        <dl class="kv mb-4"><dt>material</dt><dd>PLLA · magnesium alloys</dd><dt>strut thickness</dt><dd>≈ 2× metallic</dd><dt>failure mode</dt><dd class="text-alert">early recoil · fracture</dd></dl>
+        <p>The scaffold is meant to <b>dissolve once its job is done</b>. Polymer and magnesium are weaker than steel, so the struts have to be thick, the lumen <b>recoils early</b> and the lattice can <b>fracture</b> under cyclic load before it has finished resorbing.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6 crit">
+        <div class="hl text-alert mb-3">Diagnosis · structural stasis</div>
+        <h2 class="text-3xl font-light mb-3">Why static generations are no longer viable</h2>
+        <p>All three generations are <b>structurally static after deployment</b>. They keep one geometry and one radial force from the day they are implanted, whether that is metal, drug-coated metal or a polymer that only weakens with time.</p>
+        <ul class="mt-4 space-y-2 val text-[12px] text-[#a9c3cc]">
+          <li>✕ &nbsp;cannot follow peristaltic deformation → fatigue, migration</li>
+          <li>✕ &nbsp;cannot respond to pH and remodeling → restenosis, recoil</li>
+          <li>✕ &nbsp;cannot change shape to be removed → traumatic retrieval</li>
+        </ul>
+        <p class="mt-4">The physiology is dynamic, so <b>the implant has to be dynamic too</b>.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ ACT 2 ============ -->
+  <section id="act2" data-act="1">
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Act 02 · Cutaway twin</div>
+        <h2 class="text-4xl font-light mb-3">The Stenting Trilemma</h2>
+        <p>Every static stent is a <b>frozen compromise between three coupled trade-offs</b>, and improving one axis costs another. Drag the design point in the instrument panel: the twin re-solves wall contact, anchoring and curvature live.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Trade-off 01</div>
+        <h2 class="text-3xl font-light mb-3">Radial Force <span class="text-mut">vs</span> Tissue Trauma</h2>
+        <p>The stent has to push outward hard enough to hold a stricture open against compression. Past a threshold, that <b>contact pressure</b> causes ischemia, ulceration and hyperplasia. The heat map on the wall shows the pressure field.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Trade-off 02</div>
+        <h2 class="text-3xl font-light mb-3">Anti-Migration <span class="text-mut">vs</span> Safe Retrieval</h2>
+        <p>Flared ends, barbs and uncovered segments anchor the device against peristaltic drag. They also give tissue something to <b>grow into</b>, and the anchoring that prevents migration then makes extraction traumatic.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Trade-off 03</div>
+        <h2 class="text-3xl font-light mb-3">Deliverability <span class="text-mut">vs</span> Conformability</h2>
+        <p>A low-profile, pushable system crosses tight, tortuous anatomy, but an axially stiff device <b>straightens a curved lumen</b> and loads its edges. A soft, conformable lattice follows the curve, but is harder to deliver and holds less force.</p>
+        <p class="mt-3 text-teal">A static stent stays at one point of this triangle for its whole service life. A 4D stent can <b>move through the triangle over time</b>: press “Show 4D path”.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ ACT 3 ============ -->
+  <section id="act3" data-act="2">
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Act 03 · Fabrication</div>
+        <h2 class="text-4xl font-light mb-3">4D Printing</h2>
+        <p>4D printing is <b>3D printing plus time</b>. The lattice is printed layer by layer from a shape-memory polymer, and the material itself carries the instructions for how it should move after implantation.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Smart polymers</div>
+        <h2 class="text-3xl font-light mb-3">Netpoints and switching segments</h2>
+        <p>A shape-memory polymer network has two parts. <b>Netpoints</b> (crosslinks or hard domains) remember the permanent shape. <b>Switching segments</b> freeze below the transition temperature T<sub>trans</sub> and become mobile above it. Heating above T<sub>trans</sub> drops the modulus by orders of magnitude and the material turns rubbery.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6 warn">
+        <div class="hl text-amber mb-3">Programming · heat &amp; crimp</div>
+        <h2 class="text-3xl font-light mb-3">Crimped above T<sub>trans</sub></h2>
+        <p>The printed stent is heated <b>above its transition temperature</b> and crimped onto the delivery catheter while rubbery. The switching chains stretch and align, storing entropy like a loaded spring. The 3D chart traces the cycle in stress–strain–temperature space.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Programming · fix &amp; recover</div>
+        <h2 class="text-3xl font-light mb-3">Fixed in a temporary shape</h2>
+        <p>Cooling <b>under constraint</b> vitrifies the switching segments. After the load is released, the crimped shape stays: that is <b>shape fixity R<sub>f</sub></b>. Reheating above T<sub>trans</sub> releases the stored entropy and the lattice returns to its printed form, which is <b>shape recovery R<sub>r</sub></b>.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ ACT 4 ============ -->
+  <section id="act4" data-act="3">
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Act 04 · Dual-stimuli actuation</div>
+        <h2 class="text-4xl font-light mb-3">Delivered cold, crimped, silent</h2>
+        <p>The programmed scaffold travels through the endoscope <b>below T<sub>trans</sub></b>, kept glassy by a chilled flush. Scroll to run the sequence, or take the console and <b>drive the temperature yourself</b>.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6 warn">
+        <div class="hl text-amber mb-3">Stimulus 1 · thermal</div>
+        <h2 class="text-3xl font-light mb-3">37 °C: autonomous expansion</h2>
+        <p>At body temperature the switching segments soften and the lattice <b>recovers its programmed diameter on its own</b>, with no balloon and no metal spring. The radial force is set by the polymer network, so wall contact stays in the atraumatic band.</p>
+        <p class="mt-3 text-mut text-[13px]">The recovery is one-way: cooling afterwards does not re-crimp the stent. Try it on the console.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6" style="--tw: 1">
+        <div class="hl text-nir mb-3">Stimulus 2 · near-infrared</div>
+        <h2 class="text-3xl font-light mb-3">808 nm: remote, local heat</h2>
+        <p>NIR light at 808 nm sits in the tissue <b>optical window</b>. Photothermal fillers in the polymer turn it into heat inside the scaffold only, taking it past a second switching temperature <b>T₂ ≈ 45 °C</b> without heating the surrounding wall.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-teal mb-3">Atraumatic retrieval</div>
+        <h2 class="text-3xl font-light mb-3">Contraction away from the wall</h2>
+        <p>The second programmed shape is smaller. The lattice <b>contracts and pulls away from the mucosa</b>, so contact pressure falls to zero and a clearance gap opens. The device can then be withdrawn without tearing embedded tissue.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ ACT 5 ============ -->
+  <section id="act5" data-act="4">
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Act 05 · Computational inverse design</div>
+        <h2 class="text-4xl font-light mb-3">Hyperelastic FEA</h2>
+        <p>Above T<sub>trans</sub> the polymer behaves as a <b>hyperelastic solid</b>. Uniaxial and biaxial test data are fitted with <b>Yeoh</b> and <b>Mooney–Rivlin</b> strain-energy functions and fed into a finite-element model of the full lattice. The stent is colored by von Mises stress.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Physics-informed neural networks</div>
+        <h2 class="text-3xl font-light mb-3">Physics as a loss function</h2>
+        <p>A PINN learns the displacement and stress fields while being <b>penalized for violating equilibrium</b>, boundary conditions and the constitutive law. It can then evaluate a candidate design in milliseconds instead of hours.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-cy mb-3">Patient-specific mapping</div>
+        <h2 class="text-3xl font-light mb-3">Designed backwards from the patient</h2>
+        <p>The patient's lumen is segmented from CT slices into a point cloud. The network <b>inverts the problem</b>: it looks for the cell count, strut width and flare profile that put contact pressure in the safe band across that specific anatomy.</p>
+      </article>
+    </div>
+    <div class="step items-start pt-20 lg:items-center lg:pt-0">
+      <article class="card panel p-6">
+        <div class="hl text-teal mb-3">MediMorph</div>
+        <h2 class="text-4xl font-light mb-3">From static implants to programmable matter</h2>
+        <p>Print it, program it, deploy it at 37 °C and release it with light, with each device <b>computed for one patient</b>.</p>
+        <div class="flex flex-wrap gap-2 mt-5"><span class="chip text-cy">4D printing</span><span class="chip text-amber">SMP · T<sub>trans</sub> 37 °C</span><span class="chip text-nir">NIR 808 nm</span><span class="chip text-teal">PINN inverse design</span></div>
+        <button class="btn mt-6" id="toTop">↺ Restart the twin</button>
+      </article>
+    </div>
+    <div class="h-[40vh]"></div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+/* =====================================================================
+   0 · Utilities
+   ===================================================================== */
+const $ = (s) => document.querySelector(s);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (x, a, b) => clamp((x - a) / (b - a));
+const sstep = (a, b, x) => { const t = seg(x, a, b); return t * t * (3 - 2 * t); };
+const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// piecewise track: keys = [[x, value], ...] (value: number | array), smooth easing between keys
+function track(keys) {
+  return (x) => {
+    if (x <= keys[0][0]) return keys[0][1];
+    for (let i = 0; i < keys.length - 1; i++) {
+      const [x0, v0] = keys[i], [x1, v1] = keys[i + 1];
+      if (x <= x1) {
+        let t = (x - x0) / (x1 - x0); t = t * t * (3 - 2 * t);
+        return Array.isArray(v0) ? v0.map((v, j) => lerp(v, v1[j], t)) : lerp(v0, v1, t);
+      }
+    }
+    return keys[keys.length - 1][1];
+  };
+}
+
+/* =====================================================================
+   1 · Renderer, composer, lens pass
+   ===================================================================== */
+const host = $('#gl');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+  if (!renderer.capabilities.isWebGL2) throw new Error('webgl2');
+} catch (e) {
+  $('#nogl').classList.remove('hidden'); $('#ldmsg').textContent = 'renderer unavailable';
+  throw e;
+}
+const DPR = Math.min(window.devicePixelRatio || 1, 1.75);
+renderer.setPixelRatio(DPR);
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.setClearColor(0x03060a, 1);
+host.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.03, 220);
+camera.position.set(0.3, 0.15, 12);
+const endoCam = new THREE.PerspectiveCamera(78, 16 / 10, 0.03, 80);
+
+const rt = new THREE.WebGLRenderTarget(innerWidth * DPR, innerHeight * DPR, { type: THREE.HalfFloatType, samples: 4 });
+const composer = new EffectComposer(renderer, rt);
+composer.setPixelRatio(DPR);
+composer.setSize(innerWidth, innerHeight);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.55, 0.82);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+const lens = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uEndo: { value: 1 }, uCA: { value: 0.004 }, uGrain: { value: 0.045 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) }, uFlash: { value: 0 }, uFlashCol: { value: new THREE.Color(0.8, 0.5, 1.0) } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uTime, uEndo, uCA, uGrain, uFlash; uniform vec2 uRes; uniform vec3 uFlashCol; varying vec2 vUv;
+    void main(){
+      vec2 c = vUv - 0.5; float asp = uRes.x / uRes.y; vec2 cc = c * vec2(asp, 1.0); float r2 = dot(cc, cc);
+      vec2 d = c * (1.0 + uEndo * 0.10 * r2);
+      float ca = uCA * (0.35 + 1.6 * r2);
+      vec3 col = vec3(texture2D(tDiffuse, 0.5 + d * (1.0 + ca)).r, texture2D(tDiffuse, 0.5 + d).g, texture2D(tDiffuse, 0.5 + d * (1.0 - ca)).b);
+      float round = smoothstep(0.98, 0.48, length(cc) * (1.0 + 0.25 * uEndo) * mix(1.0, 1.18, uEndo));
+      float soft = 1.0 - 0.45 * r2;
+      col *= mix(soft, round, uEndo * 0.85);
+      col += uFlash * uFlashCol * (1.0 - r2);
+      float n = fract(sin(dot(vUv * uRes + fract(uTime) * 91.7, vec2(12.9898, 78.233))) * 43758.5453);
+      col += (n - 0.5) * uGrain;
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+composer.addPass(lens);
+
+/* =====================================================================
+   2 · GLSL library (noise · colormaps · bending · physiology)
+   ===================================================================== */
+const GLSL_COMMON = /* glsl */`
+  #define PI 3.14159265359
+  #define TAU 6.28318530718
+  vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+  vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+  vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+  vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+  float snoise(vec3 v){
+    const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+    vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+    vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g; vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+    vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+    i=mod289(i);
+    vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+    float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+    vec4 j=p-49.0*floor(p*ns.z*ns.z); vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+    vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y);
+    vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+    vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0));
+    vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+    vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+    vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+    p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w;
+    vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+    return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+  }
+  float hash11(float p){ p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
+  vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }
+  vec3 turbo(float x){
+    x = clamp(x, 0.0, 1.0);
+    const vec4 kR = vec4(0.13572138, 4.61539260, -42.66032258, 132.13108234);
+    const vec4 kG = vec4(0.09140261, 2.19418839, 4.84296658, -14.18503333);
+    const vec4 kB = vec4(0.10667330, 12.64194608, -60.58204836, 110.36276771);
+    const vec2 kR2 = vec2(-152.94239396, 59.28637943);
+    const vec2 kG2 = vec2(4.27729857, 2.82956604);
+    const vec2 kB2 = vec2(-89.90310912, 27.34824973);
+    vec4 v4 = vec4(1.0, x, x*x, x*x*x); vec2 v2 = v4.zw * v4.z;
+    return lin(clamp(vec3(dot(v4,kR)+dot(v2,kR2), dot(v4,kG)+dot(v2,kG2), dot(v4,kB)+dot(v2,kB2)), 0.0, 1.0));
+  }
+  // bend a straight segment (axis = z) into a circular arc in the y-z plane, curvature k, pivot at z = 0
+  vec3 bendYZ(vec3 p, float k){
+    float a = p.z * k;
+    float s = sin(a), c = cos(a);
+    float sinc = abs(a) < 1e-4 ? 1.0 : s / a;
+    float omc = abs(k) < 1e-5 ? 0.5 * p.z * p.z * k : 2.0 * sin(0.5 * a) * sin(0.5 * a) / k;
+    return vec3(p.x, p.y * c + omc, p.z * sinc - p.y * s);
+  }
+  // shared physiology uniforms
+  uniform float uTime;
+  uniform float uPeri, uPeriK, uPeriW;     // peristaltic amplitude, wave number, angular speed
+  uniform float uZh;                        // hero pivot (z)
+  uniform float uPatient;                   // 0..1 patient-specific anatomy
+  float periWave(float z){ return pow(0.5 + 0.5 * sin(z * uPeriK + uTime * uPeriW), 6.0); }
+  // patient-specific radius multiplier around the hero site (asymmetric stenosis + mild dilation)
+  float patientProfile(float zl, float th){
+    float sten = exp(-pow((zl - 0.6) / 1.6, 2.0)) * (0.30 + 0.10 * sin(th * 2.0 + 1.3));
+    float dil = 0.07 * exp(-pow((zl + 3.2) / 1.4, 2.0));
+    float irr = 0.05 * sin(zl * 1.7 + th * 3.0) + 0.035 * sin(th * 5.0 - zl * 0.9);
+    return 1.0 - sten + dil + irr;
+  }
+`;
+/* =====================================================================
+   3 · Procedural stent lattice (instanced struts, GPU-deformed)
+   Each strut = one instance of a small tube; endpoints are stored as
+   lattice coordinates (a = circumferential half-cell index, ring, level).
+   The vertex shader maps them to (theta, z) using the current radius, so
+   crimping/expansion is physically foreshortened and every node stays joined.
+   ===================================================================== */
+function buildStentGeometry({ pattern = 'diamond', N = 12, rings = 10, bridgeEvery = 3 }) {
+  const A = [], B = [], I = [];
+  const push = (a0, r0, l0, a1, r1, l1, type) => { A.push(a0, r0, l0); B.push(a1, r1, l1); I.push(Math.random(), type, 0, 0); };
+  if (pattern === 'diamond') {
+    for (let j = 0; j < rings - 1; j++) for (let i = 0; i < N; i++) {
+      const a = i + 0.5 * (j % 2);
+      push(a, j, 0, a + 0.5, j + 1, 0, 0);
+      push(a, j, 0, a - 0.5, j + 1, 0, 0);
+    }
+  } else { // zig-zag rings + axial bridges
+    for (let r = 0; r < rings; r++) {
+      for (let k = 0; k < 2 * N; k++) push(k * 0.5, r, k % 2, (k + 1) * 0.5, r, (k + 1) % 2, 0);
+      if (r < rings - 1) for (let k = 1; k < 2 * N; k += 2) if (((k - 1) / 2) % bridgeEvery === (r % bridgeEvery)) push(k * 0.5, r, 1, k * 0.5, r + 1, 0, 1);
+    }
+  }
+  const count = A.length / 3;
+  // base tube: S segments along strut (with slight overlap), C around
+  const S = 6, C = 7, pos = [], tp = [], idx = [];
+  for (let j = 0; j <= S; j++) for (let k = 0; k < C; k++) { tp.push(-0.06 + 1.12 * j / S, (k / C) * Math.PI * 2); pos.push(0, 0, 0); }
+  for (let j = 0; j < S; j++) for (let k = 0; k < C; k++) {
+    const a = j * C + k, b = j * C + (k + 1) % C, c = (j + 1) * C + k, d = (j + 1) * C + (k + 1) % C;
+    idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.InstancedBufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aTP', new THREE.Float32BufferAttribute(tp, 2));
+  g.setIndex(idx);
+  g.setAttribute('aA', new THREE.InstancedBufferAttribute(new Float32Array(A), 3));
+  g.setAttribute('aB', new THREE.InstancedBufferAttribute(new Float32Array(B), 3));
+  g.setAttribute('aI', new THREE.InstancedBufferAttribute(new Float32Array(I), 4));
+  g.instanceCount = count;
+  return g;
+}
+
+const STENT_VS = GLSL_COMMON + /* glsl */`
+  attribute vec2 aTP; attribute vec3 aA; attribute vec3 aB; attribute vec4 aI;
+  uniform float uN, uRings, uLevels, uL, uBridge, uRadius, uFlare, uThick, uK, uZc, uComply, uConform, uRecoil, uFrac;
+  uniform vec3 uOffset;
+  varying vec3 vW, vN; varying float vT, vPhi, vStress, vZn, vBroken, vRnd, vType, vTh;
+  float hz; float zc0;
+  float nodeZ(vec3 n){ return n.y * (hz + uBridge) + n.z * hz - zc0; }
+  float radiusAt(float z, float th){
+    float halfLen = zc0;
+    float r = uRadius * (1.0 + uFlare * smoothstep(halfLen * 0.5, halfLen, abs(z)));
+    r *= mix(1.0, patientProfile(z + uZc - uZh, th), uConform);
+    r *= 1.0 - uRecoil * (0.6 + 0.4 * sin(th * 3.0 + z));
+    r *= 1.0 - uPeri * periWave(z + uZc) * uComply;
+    return r;
+  }
+  vec3 place(float th, float z){
+    float r = radiusAt(z, th);
+    vec3 p = bendYZ(vec3(r * cos(th), r * sin(th), z), uK);
+    p.z += uZc; return p + uOffset;
+  }
+  void main(){
+    float arc = uRadius * PI / uN;
+    hz = sqrt(max(uL * uL - arc * arc, 0.0004));
+    zc0 = 0.5 * ((uRings - 1.0) * (hz + uBridge) + uLevels * hz);
+    float t = aTP.x, phi = aTP.y;
+    float th0 = aA.x * TAU / uN, th1 = aB.x * TAU / uN;
+    float z0 = nodeZ(aA), z1 = nodeZ(aB);
+    float th = mix(th0, th1, t), z = mix(z0, z1, t);
+    // fracture (bioresorbable scaffold): a fraction of struts snap at mid-span and fold inward
+    float broken = step(aI.x, uFrac * 0.38) * step(0.001, uFrac);
+    float fold = broken * uFrac * 0.35 * sin(clamp(t, 0.0, 1.0) * PI) * (t < 0.5 ? 1.0 : -0.6);
+    vec3 C = place(th, z);
+    float e = 0.02;
+    vec3 Cn = place(mix(th0, th1, t + e), mix(z0, z1, t + e));
+    vec3 Cp = place(mix(th0, th1, t - e), mix(z0, z1, t - e));
+    vec3 T = normalize(Cn - Cp);
+    vec3 ax = bendYZ(vec3(0.0, 0.0, z), uK); ax.z += uZc; ax += uOffset;
+    vec3 R = normalize(C - ax);
+    C -= R * fold;
+    vec3 N1 = normalize(R - T * dot(R, T));
+    vec3 N2 = cross(T, N1);
+    float thick = uThick * (aI.y > 0.5 ? 0.8 : 1.0);
+    vec3 nrm = cos(phi) * N1 + sin(phi) * N2;
+    vec3 P = C + thick * (cos(phi) * N1 * 1.15 + sin(phi) * N2 * 0.9);
+    // print reveal coordinate (0 at first ring, 1 at last)
+    vZn = (z + zc0) / max(2.0 * zc0, 0.001);
+    // stress proxy: peristaltic squeeze resisted by stiff struts + crowns (strut ends)
+    float crown = pow(abs(t - 0.5) * 2.0, 3.0);
+    vStress = uPeri * periWave(z + uZc) * (1.0 - uComply) * 3.2 + crown * 0.35 + broken * uFrac;
+    vT = t; vPhi = phi; vBroken = broken; vRnd = aI.x; vType = aI.y; vTh = th;
+    vec4 wp = modelMatrix * vec4(P, 1.0);
+    vW = wp.xyz; vN = normalize(mat3(modelMatrix) * nrm);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+const STENT_FS = GLSL_COMMON + /* glsl */`
+  uniform vec3 uCam, uKeyDir, uTint;
+  uniform float uMetal, uCoat, uPoly, uSmp, uFea, uPrint, uTempC, uNir, uDissolve, uInside, uKey, uHead, uGlow, uElute, uThromb, uFrac, uStressVis, uFeaScale;
+  varying vec3 vW, vN; varying float vT, vPhi, vStress, vZn, vBroken, vRnd, vType, vTh;
+  vec3 env(vec3 r){
+    float y = r.y;
+    vec3 e = mix(vec3(0.015, 0.02, 0.03), vec3(0.34, 0.42, 0.5), smoothstep(-0.3, 0.9, y));
+    e += vec3(1.6) * smoothstep(0.86, 0.97, abs(dot(r, normalize(vec3(0.6, 0.7, 0.2)))));
+    e += vec3(0.25, 0.85, 1.0) * 0.5 * smoothstep(0.55, 1.0, -r.x);
+    vec3 tissue = vec3(0.55, 0.12, 0.1) * (0.4 + 0.6 * smoothstep(-1.0, 1.0, r.z));
+    return mix(e, tissue, uInside);
+  }
+  void main(){
+    if (uPrint < 1.2 && vZn > uPrint) discard;
+    if (vBroken > 0.5 && abs(vT - 0.5) < 0.07) discard;
+    if (uDissolve > 0.0) {
+      float dn = snoise(vW * 3.1) * 0.5 + 0.5;
+      if (dn < uDissolve) discard;
+    }
+    vec3 N = normalize(vN); vec3 V = normalize(uCam - vW);
+    float ndv = max(dot(N, V), 0.0);
+    float fres = pow(1.0 - ndv, 4.0);
+    float d = length(uCam - vW);
+    float head = uHead / (1.0 + 0.05 * d * d);
+    vec3 L = normalize(uKeyDir); vec3 H = normalize(L + V);
+    float ndl = max(dot(N, L), 0.0);
+    vec3 Rf = reflect(-V, N);
+    // --- metal (316L / Co-Cr)
+    vec3 metal = env(Rf) * uTint * (0.6 + 0.4 * fres) + (head * (0.35 * ndv + 1.6 * pow(ndv, 60.0)) + uKey * (0.25 * ndl + 1.2 * pow(max(dot(N, H), 0.0), 90.0))) * uTint;
+    // --- drug/polymer coating (thin-film iridescence)
+    vec3 irid = 0.5 + 0.5 * cos(TAU * (vec3(0.0, 0.33, 0.67) + 1.6 * (1.0 - ndv) + vT * 0.3));
+    vec3 coat = mix(metal, metal * 0.55 + irid * 0.35 * (head + uKey), 0.7) + vec3(0.9, 0.7, 0.15) * uElute * 0.35 * (0.6 + 0.4 * sin(uTime * 3.0 + vRnd * 40.0));
+    coat = mix(coat, vec3(0.16, 0.0, 0.01) * (0.4 + head), uThromb * smoothstep(0.35, 0.9, sin(vTh * 2.0 + 0.7) * 0.5 + 0.5));
+    // --- bioresorbable polymer (PLLA): milky translucent
+    vec3 polyBase = vec3(0.8, 0.82, 0.85);
+    vec3 poly = polyBase * (0.12 + head * (0.3 + 0.7 * (0.5 + 0.5 * dot(N, V))) + uKey * (0.3 + 0.7 * ndl)) + fres * vec3(0.5, 0.6, 0.7) * 0.6 + head * 0.35 * pow(ndv, 20.0);
+    poly = mix(poly, vec3(0.9, 0.4, 0.2) * (head + 0.2), vBroken * 0.6);
+    // --- shape-memory polymer: glassy (cool teal) -> rubbery (amber) ; NIR photothermal glow
+    vec3 cold = vec3(0.08, 0.55, 0.85), warm = vec3(1.0, 0.45, 0.12);
+    vec3 smpC = mix(cold, warm, smoothstep(0.0, 1.0, uTempC));
+    smpC = mix(smpC, vec3(0.62, 0.28, 1.0), clamp(uNir, 0.0, 1.0) * 0.75);
+    vec3 smp = smpC * (0.12 + 0.5 * (head + uKey * (0.35 + 0.65 * ndl))) + env(Rf) * 0.25 * fres + uKey * 0.5 * pow(max(dot(N, H), 0.0), 60.0);
+    smp += smpC * uGlow * (0.35 + 0.65 * fres);
+    float pulse = 0.6 + 0.4 * sin(uTime * 9.0 - vZn * 14.0 + vRnd * 6.0);
+    smp += vec3(0.6, 0.25, 1.0) * uNir * 0.45 * pulse;
+    // --- FEA: von Mises field (turbo) + element edges
+    float vm = clamp((0.25 + 0.55 * pow(abs(vT - 0.5) * 2.0, 2.0) + 0.25 * vType + 0.12 * sin(vTh * 3.0 + vZn * 5.0)) * uFeaScale, 0.0, 1.0);
+    vec2 gp = vec2(vT * 9.0, vPhi / TAU * 7.0);
+    vec2 gd = abs(fract(gp) - 0.5) / fwidth(gp);
+    float edge = 1.0 - clamp(min(gd.x, gd.y) - 0.5, 0.0, 1.0);
+    vec3 fea = turbo(vm) * (0.35 + 0.65 * (head + uKey * (0.4 + 0.6 * ndl)) + 0.25) ;
+    fea = mix(fea, fea * 0.25, edge * 0.8) + turbo(vm) * 0.35 * fres;
+    // mix
+    vec3 col = metal * uMetal + coat * uCoat + poly * uPoly + smp * uSmp;
+    col = mix(col, fea, uFea);
+    // stress hot-spots on static stents
+    col += turbo(clamp(vStress, 0.0, 1.0)) * smoothstep(0.45, 1.0, vStress) * uStressVis * 1.4;
+    // print head glow
+    if (uPrint < 1.2) col += vec3(1.0, 0.55, 0.15) * 5.0 * smoothstep(uPrint - 0.045, uPrint, vZn);
+    // fog in lumen
+    col *= mix(1.0, exp(-0.035 * d), uInside);
+    gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+
+const PHYS = { uTime: { value: 0 }, uPeri: { value: 0.12 }, uPeriK: { value: 0.55 }, uPeriW: { value: -1.25 }, uZh: { value: -66 }, uPatient: { value: 0 } };
+const LIGHT = { uCam: { value: new THREE.Vector3() }, uKeyDir: { value: new THREE.Vector3(0.5, 0.8, 0.35).normalize() } };
+
+function makeStent(spec) {
+  const geo = buildStentGeometry(spec);
+  const u = {
+    ...PHYS, ...LIGHT,
+    uN: { value: spec.N }, uRings: { value: spec.rings }, uLevels: { value: spec.pattern === 'diamond' ? 0 : 1 },
+    uL: { value: spec.L }, uBridge: { value: spec.bridge || 0 }, uRadius: { value: spec.R }, uFlare: { value: spec.flare || 0 },
+    uThick: { value: spec.thick }, uK: { value: 0 }, uZc: { value: spec.z }, uComply: { value: spec.comply ?? 0.1 },
+    uConform: { value: 0 }, uRecoil: { value: 0 }, uFrac: { value: 0 }, uOffset: { value: new THREE.Vector3() },
+    uTint: { value: new THREE.Color(spec.tint || 0xc9d2da) },
+    uMetal: { value: spec.metal ?? 1 }, uCoat: { value: spec.coat ?? 0 }, uPoly: { value: spec.poly ?? 0 }, uSmp: { value: spec.smp ?? 0 },
+    uFea: { value: 0 }, uPrint: { value: 2 }, uTempC: { value: 0 }, uNir: { value: 0 }, uDissolve: { value: 0 }, uInside: { value: 1 },
+    uKey: { value: 0 }, uHead: { value: 1.4 }, uGlow: { value: 0 }, uElute: { value: 0 }, uThromb: { value: 0 }, uStressVis: { value: 1 }, uFeaScale: { value: 1 }
+  };
+  // shared uniform objects must be referenced, not copied
+  for (const k of Object.keys(PHYS)) u[k] = PHYS[k];
+  for (const k of Object.keys(LIGHT)) u[k] = LIGHT[k];
+  const mat = new THREE.ShaderMaterial({ uniforms: u, vertexShader: STENT_VS, fragmentShader: STENT_FS, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+  return mesh;
+}
+/* =====================================================================
+   4 · GI lumen: procedural mucosa with plicae, peristalsis, stent contact,
+       restenosis ingrowth, thrombus, patient anatomy and cutaway
+   ===================================================================== */
+const Z_TOP = 16, Z_BOT = -86, Z_HERO = -66;
+const Z_BMS = -8, Z_DES = -26, Z_BRS = -44;
+const WALL_LIB = /* glsl */`
+  uniform float uR0, uFold, uLumK;
+  uniform vec4 uS[4];   // zc, radius, halfLen, flare
+  uniform vec4 uSf[4];  // ingrowth, thrombus, active, conform
+  uniform float uSk;    // hero stent curvature
+  vec3 bendC(vec3 p, float k){
+    float Lb = 7.0; float zc = clamp(p.z, -Lb, Lb);
+    vec3 q = bendYZ(vec3(p.x, p.y, zc), k);
+    float a = zc * k;
+    return q + vec3(0.0, sin(a), cos(a)) * (p.z - zc);
+  }
+  // returns local (unbent, pivot-relative) wall point
+  vec3 wallLocal(float u, float z, out float press, out float ingrow, out float clot, out float crest){
+    float th = u * TAU; vec2 dir = vec2(cos(th), sin(th));
+    float zl = z - uZh;
+    float f = 0.5 + 0.5 * sin(z * 2.35 + 1.8 * snoise(vec3(dir * 0.9, z * 0.13)));
+    crest = pow(f, 3.0);
+    float r = uR0 - uFold * crest;
+    r += 0.075 * snoise(vec3(dir * 1.2, z * 0.33)) + 0.03 * snoise(vec3(dir * 3.0, z * 0.9));
+    r *= 1.0 - uPeri * periWave(z);
+    r *= mix(1.0, patientProfile(zl, th), uPatient);
+    press = 0.0; ingrow = 0.0; clot = 0.0;
+    for (int i = 0; i < 4; i++) {
+      vec4 S = uS[i]; vec4 F = uSf[i];
+      if (F.z < 0.5) continue;
+      float dz = z - S.x; float ad = abs(dz);
+      if (ad > S.z + 1.2) continue;
+      float Rs = S.y * (1.0 + S.w * smoothstep(S.z * 0.5, S.z, ad));
+      Rs *= mix(1.0, patientProfile(zl, th), F.w);
+      float dy = (i == 0) ? 0.5 * (uSk - uLumK) * clamp(dz, -7.0, 7.0) * clamp(dz, -7.0, 7.0) : 0.0;
+      vec2 c = vec2(0.0, dy);
+      float b = dot(dir, c);
+      float ts = b + sqrt(max(b * b - dot(c, c) + Rs * Rs, 0.0)) + 0.055;
+      float w = 1.0 - smoothstep(S.z - 0.15, S.z + 0.6, ad);
+      float pen = ts - r;
+      if (pen > 0.0) { r += pen * w; press += pen * w; }
+      // in-stent restenosis: neointima grows through the cage
+      float win = 1.0 - smoothstep(S.z - 0.5, S.z + 0.25, ad);
+      float nn = 0.75 + 0.25 * snoise(vec3(dir * 2.5, z * 1.3));
+      float rin = ts * (1.0 - 0.36 * nn);
+      float gi = F.x * win;
+      r = mix(r, min(r, rin), gi); ingrow = max(ingrow, gi * nn);
+      // thrombus mass on the strut surface
+      float ang = atan(sin(th - 0.9), cos(th - 0.9));
+      float cm = exp(-(pow(dz - 0.5, 2.0) / 0.7 + ang * ang / 0.16)) * F.y;
+      r -= 0.45 * cm * (0.85 + 0.15 * snoise(vec3(dir * 6.0, z * 3.0))); clot = max(clot, cm);
+    }
+    return vec3(dir * r, zl);
+  }
+  vec3 wallWorld(vec3 l){ vec3 p = bendC(l, uLumK); p.z += uZh; return p; }
+`;
+const LUMEN_VS = GLSL_COMMON + WALL_LIB + /* glsl */`
+  attribute vec2 aUZ;
+  varying vec3 vW, vN, vQ; varying float vPress, vIngrow, vClot, vCrest, vWave, vU, vZ;
+  void main(){
+    float pr, ig, cl, cr, a, b, c, d;
+    vec3 l = wallLocal(aUZ.x, aUZ.y, pr, ig, cl, cr);
+    vec3 lu = wallLocal(aUZ.x + 0.004, aUZ.y, a, b, c, d);
+    vec3 lz = wallLocal(aUZ.x, aUZ.y + 0.06, a, b, c, d);
+    vec3 P = wallWorld(l), Pu = wallWorld(lu), Pz = wallWorld(lz);
+    vec3 N = normalize(cross(Pu - P, Pz - P));
+    vec3 axis = wallWorld(vec3(0.0, 0.0, l.z));
+    if (dot(N, axis - P) < 0.0) N = -N;           // inward-facing (mucosa side)
+    vW = P; vN = N; vQ = vec3(cos(aUZ.x * TAU) * 2.0, sin(aUZ.x * TAU) * 2.0, aUZ.y);
+    vPress = pr; vIngrow = ig; vClot = cl; vCrest = cr; vWave = periWave(aUZ.y); vU = aUZ.x; vZ = aUZ.y;
+    gl_Position = projectionMatrix * viewMatrix * vec4(P, 1.0);
+  }
+`;
+const LUMEN_FS = GLSL_COMMON + /* glsl */`
+  uniform vec3 uCam, uKeyDir, uBg;
+  uniform float uCutX, uTwin, uHeat, uDissolve, uHead, uKey, uAmb, uFogK, uPressK, uGridA;
+  varying vec3 vW, vN, vQ; varying float vPress, vIngrow, vClot, vCrest, vWave, vU, vZ;
+  vec3 perturb(vec3 p, vec3 n, vec2 dh){
+    vec3 sx = dFdx(p), sy = dFdy(p);
+    vec3 r1 = cross(sy, n), r2 = cross(n, sx);
+    float det = dot(sx, r1);
+    vec3 grad = sign(det) * (dh.x * r1 + dh.y * r2);
+    return normalize(abs(det) * n - grad);
+  }
+  void main(){
+    if (vW.x > uCutX) discard;
+    float dn = 1.0;
+    if (uDissolve > 0.0) { dn = snoise(vQ * vec3(0.9, 0.9, 0.35)) * 0.5 + 0.5; if (dn < uDissolve) discard; }
+    vec3 N = normalize(vN);
+    bool inner = dot(N, uCam - vW) > 0.0;
+    if (!inner) N = -N;
+    float h = snoise(vQ * vec3(2.4, 2.4, 1.5)) * 0.55 + snoise(vQ * 7.0) * 0.25 + snoise(vQ * 19.0) * 0.08;
+    N = perturb(vW, N, vec2(dFdx(h), dFdy(h)) * 0.9);
+    vec3 V = normalize(uCam - vW);
+    float d = length(uCam - vW);
+    // albedo
+    float n1 = snoise(vQ * vec3(0.8, 0.8, 0.45)) * 0.5 + 0.5;
+    vec3 deep = lin(vec3(0.36, 0.05, 0.09)), base = lin(vec3(0.72, 0.29, 0.33)), crest = lin(vec3(0.92, 0.56, 0.55));
+    vec3 alb = mix(deep, base, smoothstep(0.0, 0.6, 1.0 - vCrest * 0.8 + n1 * 0.4));
+    alb = mix(alb, crest, vCrest * 0.55);
+    float vein = 1.0 - abs(snoise(vQ * vec3(1.5, 1.5, 0.6) + 3.1));
+    float vein2 = 1.0 - abs(snoise(vQ * vec3(4.0, 4.0, 1.8) + 7.3));
+    alb = mix(alb, lin(vec3(0.5, 0.1, 0.22)), smoothstep(0.955, 0.995, vein) * 0.45 + smoothstep(0.965, 0.998, vein2) * 0.22);
+    alb = mix(alb, lin(vec3(0.84, 0.62, 0.58)), smoothstep(0.1, 0.7, vIngrow));
+    alb = mix(alb, lin(vec3(0.4, 0.03, 0.05)) * (0.7 + 0.3 * n1), smoothstep(0.08, 0.5, vClot));
+    alb *= 1.0 + vWave * uHead * 0.08;
+    if (!inner) alb = lin(vec3(0.62, 0.47, 0.44));
+    // lighting: endoscope headlight + key light
+    float att = uHead / (1.0 + 0.05 * d * d);
+    float ndv = max(dot(N, V), 0.0);
+    float wrap = clamp((dot(N, V) + 0.4) / 1.4, 0.0, 1.0);
+    vec3 L = normalize(uKeyDir); vec3 H = normalize(L + V);
+    float ndl = max(dot(N, L), 0.0);
+    float wet = inner ? 1.0 : 0.15;
+    vec3 col = alb * (att * (0.1 + 0.9 * wrap) + uKey * (0.2 + 0.8 * ndl) + uAmb);
+    col += wet * (att * (1.5 * pow(ndv, 70.0) + 0.1 * pow(ndv, 12.0)) + uKey * 0.9 * pow(max(dot(N, H), 0.0), 80.0)) * vec3(1.0, 0.93, 0.92) * (0.6 + 0.4 * n1);
+    col += wet * alb * pow(1.0 - ndv, 3.0) * (att * 0.6 + uKey * 0.3);
+    col += lin(vec3(0.3, 0.02, 0.02)) * pow(vClot, 2.0) * 0.2 * att;
+    // contact pressure heat map
+    float pk = clamp(vPress * uPressK, 0.0, 1.0);
+    vec3 hm = turbo(pk);
+    col = mix(col, hm * (0.35 + 0.8 * (att + uKey * ndl)), uHeat * smoothstep(0.002, 0.03, vPress) * 0.9);
+    col += hm * uHeat * smoothstep(0.55, 1.0, pk) * 0.9;
+    // digital twin grid
+    vec2 gc = vec2(vU * 48.0, vZ * 2.0);
+    vec2 gw = max(fwidth(gc), vec2(1e-4));
+    vec2 gd = abs(fract(gc - 0.5) - 0.5) / gw;
+    float line = 1.0 - min(min(gd.x, gd.y), 1.0);
+    col = mix(col, col * 0.18, uTwin);
+    col += lin(vec3(0.37, 0.9, 1.0)) * line * (uTwin * 0.9 + uGridA) * (0.35 + 0.65 * exp(-0.04 * d));
+    // dissolve edge
+    if (uDissolve > 0.0) col += lin(vec3(0.37, 0.9, 1.0)) * 5.0 * smoothstep(uDissolve + 0.05, uDissolve, dn);
+    col = mix(uBg, col, exp(-d * uFogK));
+    gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+function makeLumen() {
+  const U = 150, Z = 1000, uz = [], pos = [], idx = [];
+  for (let j = 0; j <= Z; j++) for (let i = 0; i <= U; i++) {
+    const u = i / U, z = lerp(Z_TOP, Z_BOT, j / Z);
+    uz.push(u, z); pos.push(Math.cos(u * 6.283) * 2, Math.sin(u * 6.283) * 2, z);
+  }
+  for (let j = 0; j < Z; j++) for (let i = 0; i < U; i++) {
+    const a = j * (U + 1) + i, b = a + 1, c = a + U + 1, d = c + 1;
+    idx.push(a, b, c, b, d, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aUZ', new THREE.Float32BufferAttribute(uz, 2));
+  g.setIndex(idx);
+  const u = {
+    ...PHYS, ...LIGHT,
+    uR0: { value: 2.0 }, uFold: { value: 0.16 }, uLumK: { value: 0 }, uSk: { value: 0 },
+    uS: { value: [new THREE.Vector4(Z_HERO, 1.9, 3, 0), new THREE.Vector4(Z_BMS, 1.9, 2.6, 0), new THREE.Vector4(Z_DES, 1.9, 2.6, 0), new THREE.Vector4(Z_BRS, 1.9, 2.6, 0)] },
+    uSf: { value: [new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 1, 0), new THREE.Vector4(0, 0, 1, 0), new THREE.Vector4(0, 0, 1, 0)] },
+    uBg: { value: new THREE.Color(0x03060a) }, uCutX: { value: 99 }, uTwin: { value: 0 }, uHeat: { value: 0 }, uDissolve: { value: 0 },
+    uHead: { value: 1.6 }, uKey: { value: 0 }, uAmb: { value: 0.01 }, uFogK: { value: 0.02 }, uPressK: { value: 2.5 }, uGridA: { value: 0 }
+  };
+  for (const k of Object.keys(PHYS)) u[k] = PHYS[k];
+  for (const k of Object.keys(LIGHT)) u[k] = LIGHT[k];
+  const mat = new THREE.ShaderMaterial({ uniforms: u, vertexShader: LUMEN_VS, fragmentShader: LUMEN_FS, side: THREE.DoubleSide });
+  const m = new THREE.Mesh(g, mat); m.frustumCulled = false; scene.add(m);
+  return m;
+}
+/* =====================================================================
+   5 · Supporting cast: particles, delivery system, endoscope, NIR beam,
+       rotary print stage, thermomechanical chart, patient point cloud
+   ===================================================================== */
+const keyLight = new THREE.DirectionalLight(0xdff6ff, 0); keyLight.position.set(5, 8, 3.5); scene.add(keyLight);
+const headLight = new THREE.PointLight(0xfff1ea, 0, 30, 1.6); scene.add(headLight);
+scene.add(new THREE.AmbientLight(0x2a3c48, 0.35));
+
+function pointsMaterial(vs, fs, extra = {}) {
+  return new THREE.ShaderMaterial({ uniforms: { ...extra, uTime: PHYS.uTime, uPx: { value: DPR } }, vertexShader: vs, fragmentShader: fs, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+}
+// --- floating mucus / debris motes in the lumen
+function makeMotes() {
+  const n = 1600, p = new Float32Array(n * 3), r = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.283, rr = Math.sqrt(Math.random()) * 1.55;
+    p.set([Math.cos(a) * rr, Math.sin(a) * rr, lerp(Z_TOP, Z_BOT, Math.random())], i * 3); r[i] = Math.random();
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('aR', new THREE.BufferAttribute(r, 1));
+  const m = new THREE.Points(g, pointsMaterial(`
+    attribute float aR; uniform float uTime, uPx; varying float vA;
+    void main(){ vec3 p = position; p.x += sin(uTime * 0.3 + aR * 40.0) * 0.12; p.y += cos(uTime * 0.23 + aR * 17.0) * 0.12; p.z += sin(uTime * 0.1 + aR * 9.0) * 0.4;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
+      gl_PointSize = uPx * (0.8 + aR * 1.6) * 12.0 / max(-mv.z, 0.3); vA = exp(0.05 * mv.z) * (0.15 + 0.35 * aR) * smoothstep(0.6, 2.5, -mv.z); }`, `
+    uniform float uOp; varying float vA;
+    void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(vec3(1.0, 0.82, 0.78) * smoothstep(0.5, 0.0, d) * vA * uOp, 1.0); }`, { uOp: { value: 1 } }));
+  m.frustumCulled = false; scene.add(m); return m;
+}
+// --- anti-proliferative drug eluting from the DES coating
+function makeElution(zc) {
+  const n = 900, p = new Float32Array(n * 3), r = new Float32Array(n);
+  for (let i = 0; i < n; i++) { p.set([Math.random() * 6.283, zc + (Math.random() * 2 - 1) * 2.5, 0], i * 3); r[i] = Math.random(); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('aR', new THREE.BufferAttribute(r, 1));
+  const m = new THREE.Points(g, pointsMaterial(`
+    attribute float aR; uniform float uTime, uPx; varying float vA;
+    void main(){ float ph = fract(uTime * 0.12 + aR); float rr = 1.86 - ph * 0.9; float th = position.x + ph * 0.6;
+      vec3 p = vec3(cos(th) * rr, sin(th) * rr, position.y + (ph - 0.5) * 0.4);
+      vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
+      gl_PointSize = uPx * 16.0 / max(-mv.z, 0.3); vA = sin(ph * 3.14159) * exp(0.05 * mv.z); }`, `
+    uniform float uOp; varying float vA;
+    void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(vec3(1.0, 0.72, 0.2) * smoothstep(0.5, 0.05, d) * vA * uOp * 1.6, 1.0); }`, { uOp: { value: 0 } }));
+  m.frustumCulled = false; scene.add(m); return m;
+}
+// --- through-the-scope delivery: endoscope, catheter, retractable sheath
+function makeDelivery() {
+  const grp = new THREE.Group(); scene.add(grp);
+  const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0c1116, roughness: 0.35, metalness: 0.3 });
+  const scope = new THREE.Group(); grp.add(scope);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 40, 48, 1, false), scopeMat);
+  body.rotation.x = Math.PI / 2; body.position.z = 20; scope.add(body);
+  for (let i = 0; i < 7; i++) { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.625, 0.018, 8, 48), new THREE.MeshStandardMaterial({ color: 0x33424d, roughness: 0.4, metalness: 0.6 })); ring.position.z = 0.6 + i * 0.45; scope.add(ring); }
+  const face = new THREE.Mesh(new THREE.CircleGeometry(0.62, 48), new THREE.MeshStandardMaterial({ color: 0x1a2229, roughness: 0.25, metalness: 0.5 }));
+  face.rotation.y = Math.PI; face.position.z = -0.001; scope.add(face);
+  const ledMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 3, 2.8) });
+  for (const [x, y] of [[-0.32, 0.18], [0.05, 0.4]]) { const led = new THREE.Mesh(new THREE.CircleGeometry(0.1, 24), ledMat); led.position.set(x, y, -0.004); led.rotation.y = Math.PI; scope.add(led); }
+  const lensM = new THREE.Mesh(new THREE.CircleGeometry(0.13, 32), new THREE.MeshStandardMaterial({ color: 0x071a2a, roughness: 0.05, metalness: 0.9 })); lensM.position.set(-0.2, -0.26, -0.004); lensM.rotation.y = Math.PI; scope.add(lensM);
+  scope.position.set(-0.25, 0.2, Z_HERO + 5.5);
+  // catheter (exits the working channel, aligned with lumen axis)
+  const cath = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 12, 24), new THREE.MeshStandardMaterial({ color: 0xdde8ee, roughness: 0.5 }));
+  cath.rotation.x = Math.PI / 2; cath.position.set(0, 0, Z_HERO + 2.2); grp.add(cath);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.7, 24), new THREE.MeshStandardMaterial({ color: 0x5ee7ff, emissive: 0x0c3a44, roughness: 0.4 }));
+  tip.rotation.x = -Math.PI / 2; tip.position.set(0, 0, Z_HERO - 4.15); grp.add(tip);
+  const sheath = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.74, 8.2, 48, 1, true), new THREE.MeshStandardMaterial({ color: 0x7fb9d6, roughness: 0.2, metalness: 0.0, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
+  sheath.rotation.x = Math.PI / 2; grp.add(sheath);
+  const sheathZ0 = Z_HERO + 0.2; sheath.position.z = sheathZ0;
+  // NIR beam (808 nm visualised in violet)
+  const beamGeo = new THREE.CylinderGeometry(0.05, 1.15, 7.5, 48, 24, true); beamGeo.translate(0, -3.75, 0); beamGeo.rotateX(Math.PI / 2);
+  const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
+    uniforms: { uTime: PHYS.uTime, uI: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    vertexShader: `varying vec3 vP; varying vec3 vNv; varying vec3 vV; void main(){ vP = position; vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = -mv.xyz; vNv = normalMatrix * normal; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: GLSL_COMMON + `uniform float uI; varying vec3 vP; varying vec3 vNv; varying vec3 vV;
+      void main(){ float l = clamp(-vP.z / 7.5, 0.0, 1.0); float edge = abs(dot(normalize(vNv), normalize(vV)));
+        float n = snoise(vec3(vP.xy * 2.0, vP.z * 0.6 - uTime * 3.0)) * 0.5 + 0.5;
+        float a = uI * pow(edge, 2.2) * pow(1.0 - l, 1.6) * (0.55 + 0.45 * n) * smoothstep(0.0, 0.05, l);
+        gl_FragColor = vec4(vec3(0.55, 0.22, 1.0) * a * 0.42, 1.0); }`
+  }));
+  scope.add(beam); beam.position.set(0.25, -0.2, -0.02);
+  return { grp, scope, cath, tip, sheath, sheathZ0, beam };
+}
+// --- clearance annotation (retrieval)
+function makeClearance() {
+  const grp = new THREE.Group(); scene.add(grp);
+  const mat = (c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0, depthWrite: false });
+  const ringS = new THREE.Mesh(new THREE.TorusGeometry(1, 0.014, 8, 160), mat(new THREE.Color(0.4, 2.2, 2.6)));
+  const ringW = new THREE.Mesh(new THREE.TorusGeometry(1, 0.01, 8, 160), mat(new THREE.Color(2.6, 1.5, 0.45)));
+  const lbl = textSprite('CLEARANCE · 0 kPa CONTACT', { color: '#5ee7ff', size: 0.15 });
+  grp.add(ringS, ringW, lbl);
+  return { grp, ringS, ringW, lbl };
+}
+// --- rotary print stage
+function makeStage() {
+  const grp = new THREE.Group(); scene.add(grp); grp.position.z = Z_HERO;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShaderMaterial({
+    uniforms: { uOp: { value: 0 }, uTime: PHYS.uTime }, transparent: true, depthWrite: false,
+    vertexShader: `varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform float uOp; uniform float uTime; varying vec2 vP;
+      float grid(vec2 p, float s){ vec2 g = abs(fract(p / s - 0.5) - 0.5) / (fwidth(p) / s); return 1.0 - min(min(g.x, g.y), 1.0); }
+      void main(){ float r = length(vP); float a = (grid(vP, 1.0) * 0.35 + grid(vP, 5.0) * 0.8) * exp(-r * 0.12);
+        float ring = smoothstep(0.06, 0.0, abs(r - 6.0 - 0.5 * sin(uTime))) * 0.6;
+        gl_FragColor = vec4(vec3(0.3, 0.85, 1.0) * (a + ring) * uOp * 0.5, uOp * (a + ring)); }`
+  }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = -3.2; grp.add(floor);
+  const mandrel = new THREE.Mesh(new THREE.CylinderGeometry(1.84, 1.84, 8.2, 64, 1, true), new THREE.MeshStandardMaterial({ color: 0x3a4a55, roughness: 0.3, metalness: 0.85, transparent: true, opacity: 0 }));
+  mandrel.rotation.x = Math.PI / 2; grp.add(mandrel);
+  const nozzle = new THREE.Group(); grp.add(nozzle);
+  const noz = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.8, 24), new THREE.MeshStandardMaterial({ color: 0xc9d6de, roughness: 0.25, metalness: 0.9 }));
+  noz.rotation.x = Math.PI; noz.position.y = 2.75; nozzle.add(noz);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.7), new THREE.MeshStandardMaterial({ color: 0x1b2730, roughness: 0.5, metalness: 0.4 }));
+  body.position.y = 3.7; nozzle.add(body);
+  const hot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(6, 3, 0.8) }));
+  hot.position.y = 2.2; nozzle.add(hot);
+  const laser = new THREE.Mesh(new THREE.PlaneGeometry(0.02, 4.6), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 1.8, 0.4), transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+  laser.rotation.y = Math.PI / 2; laser.position.y = 0; nozzle.add(laser);
+  grp.visible = false;
+  return { grp, floor, mandrel, nozzle };
+}
+// --- text sprites (canvas-generated, no external assets)
+function textSprite(txt, { size = 0.34, color = '#9fdcef', weight = 500 } = {}) {
+  const c = document.createElement('canvas'), x = c.getContext('2d'), fs = 64;
+  x.font = `${weight} ${fs}px "IBM Plex Mono", monospace`;
+  const w = Math.ceil(x.measureText(txt).width) + 24; c.width = w; c.height = fs + 24;
+  x.font = `${weight} ${fs}px "IBM Plex Mono", monospace`; x.fillStyle = color; x.textBaseline = 'middle'; x.fillText(txt, 12, c.height / 2);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false }));
+  s.scale.set(size * c.width / c.height, size, 1); s.renderOrder = 10; return s;
+}
+// --- thermomechanical cycle: (ε, σ, T) piecewise state for c ∈ [0, 6]
+const T_TRANS = 36.8;
+function cycleState(c) {
+  const k = (a, b) => sstep(0, 1, clamp(c - a) / (b - a || 1));
+  let T = 22, s = 0, e = 0;
+  if (c < 1) { T = 22; }
+  else if (c < 2) { T = lerp(22, 55, k(1, 2)); }
+  else if (c < 3) { const t = k(2, 3); T = 55; e = 70 * t; s = 1.8 * Math.pow(t, 1.25); }
+  else if (c < 4) { const t = k(3, 4); T = lerp(55, 20, t); e = 70; s = lerp(1.8, 2.3, t); }
+  else if (c < 5) { const t = k(4, 5); T = 20; e = lerp(70, 68.3, t); s = lerp(2.3, 0, t); }
+  else { const t = k(5, 6); T = lerp(20, 55, t); const rec = sstep(0.25, 0.8, t); e = lerp(68.3, 2.7, rec); s = 0; }
+  return { T, s, e };
+}
+function makeChart() {
+  const grp = new THREE.Group(); scene.add(grp);
+  const W = 5, Hh = 3.2, D = 5, map = (st) => new THREE.Vector3(st.e / 80 * W, st.s / 2.5 * Hh, (st.T - 15) / 45 * D);
+  const lm = (col, op = 1) => new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: op });
+  const axes = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(W, 0, 0), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, Hh, 0), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, D)]);
+  grp.add(new THREE.LineSegments(axes, lm(0x5ee7ff, 0.9)));
+  const gp = []; for (let i = 1; i <= 4; i++) { gp.push(new THREE.Vector3(i * W / 4, 0, 0), new THREE.Vector3(i * W / 4, 0, D)); gp.push(new THREE.Vector3(0, 0, i * D / 4), new THREE.Vector3(W, 0, i * D / 4)); }
+  grp.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(gp), lm(0x5ee7ff, 0.14)));
+  const tz = (T_TRANS - 15) / 45 * D;
+  grp.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, tz), new THREE.Vector3(W, 0, tz), new THREE.Vector3(0, 0, tz), new THREE.Vector3(0, Hh, tz)]), new THREE.LineDashedMaterial({ color: 0xffb547, dashSize: 0.12, gapSize: 0.1, transparent: true, opacity: 0.8 })).computeLineDistances());
+  const pts = [], cols = [];
+  const stepCol = [0x5ee7ff, 0xffb547, 0xff7a45, 0x5ea8ff, 0x2dd4bf, 0xffb547].map(h => new THREE.Color(h));
+  for (let i = 0; i <= 600; i++) { const c = i / 100; const p = map(cycleState(c)); pts.push(p.x, p.y, p.z); const cc = stepCol[Math.min(5, Math.floor(c))]; cols.push(cc.r, cc.g, cc.b); }
+  const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); cg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  const curve = new THREE.Line(cg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 1 }));
+  grp.add(curve);
+  const marker = new THREE.Mesh(new THREE.SphereGeometry(0.09, 20, 20), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3, 1.4) })); grp.add(marker);
+  const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), lm(0xffb547, 0.5)); grp.add(drop);
+  const lab = (t, p, o) => { const s = textSprite(t, o); s.position.copy(p); grp.add(s); return s; };
+  lab('ε  strain', new THREE.Vector3(W + 0.8, 0, 0)); lab('σ  stress', new THREE.Vector3(0, Hh + 0.35, 0)); lab('T  temp.', new THREE.Vector3(0, 0, D + 0.6));
+  lab('T_trans 36.8°C', new THREE.Vector3(W + 0.9, 0.05, tz), { color: '#ffb547', size: 0.28 });
+  const stepLabels = [['① print', 0.5], ['② heat', 1.5], ['③ crimp', 2.5], ['④ cool', 3.5], ['⑤ unload', 4.5], ['⑥ recover', 5.5]].map(([t, c]) => { const p = map(cycleState(c)).add(new THREE.Vector3(0, 0.3, 0)); return lab(t, p, { size: 0.26, color: '#d3e9ef' }); });
+  cg.setDrawRange(0, 0);
+  grp.visible = false;
+  return { grp, curve, cg, marker, drop, map, stepLabels };
+}
+// --- patient-specific point cloud (CT-segmented lumen), rendered from the same wall function
+function makePatientCloud() {
+  const U = 96, Zs = 64, uz = [];
+  for (let j = 0; j < Zs; j++) for (let i = 0; i < U; i++) uz.push(i / U + (j % 2) * 0.5 / U, Z_HERO - 7 + 14 * j / (Zs - 1));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(uz.length / 2 * 3), 3));
+  g.setAttribute('aUZ', new THREE.Float32BufferAttribute(uz, 2));
+  const u = { uR0: lumen.material.uniforms.uR0, uFold: { value: 0.05 }, uLumK: lumen.material.uniforms.uLumK, uSk: { value: 0 },
+    uS: { value: [0, 1, 2, 3].map(() => new THREE.Vector4()) }, uSf: { value: [0, 1, 2, 3].map(() => new THREE.Vector4()) },
+    uOp: { value: 0 }, uScan: { value: 0 }, uPx: { value: DPR } };
+  Object.assign(u, PHYS);
+  const m = new THREE.Points(g, new THREE.ShaderMaterial({
+    uniforms: u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: GLSL_COMMON + WALL_LIB + `attribute vec2 aUZ; uniform float uScan, uPx; varying float vS; varying float vD;
+      void main(){ float a, b, c, d; vec3 l = wallLocal(aUZ.x, aUZ.y, a, b, c, d); l.xy *= 1.04; vec3 P = wallWorld(l);
+        vec4 mv = viewMatrix * vec4(P, 1.0); gl_Position = projectionMatrix * mv;
+        vS = exp(-pow((aUZ.y - uScan) / 0.35, 2.0)); vD = -mv.z; gl_PointSize = uPx * (1.3 + vS * 2.2) * 14.0 / max(-mv.z, 0.5); }`,
+    fragmentShader: `uniform float uOp; varying float vS; varying float vD;
+      void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard;
+        vec3 c = mix(vec3(0.15, 0.75, 0.95), vec3(1.0), vS); gl_FragColor = vec4(c * smoothstep(0.5, 0.1, d) * uOp * (0.35 + vS * 1.4), 1.0); }`
+  }));
+  m.frustumCulled = false; scene.add(m); return m;
+}
+/* =====================================================================
+   6 · Cast instantiation
+   ===================================================================== */
+const lumen = makeLumen(); const LU = lumen.material.uniforms;
+const S = {
+  hero: makeStent({ pattern: 'diamond', N: 14, rings: 13, L: 0.62, R: 1.94, thick: 0.05, z: Z_HERO, metal: 1, tint: 0xb9c3cb, comply: 0.15 }),
+  bms:  makeStent({ pattern: 'diamond', N: 10, rings: 9, L: 0.81, R: 1.92, thick: 0.058, z: Z_BMS, metal: 1, tint: 0xc4ccd4, comply: 0.08 }),
+  des:  makeStent({ pattern: 'zring', N: 9, rings: 7, L: 0.83, bridge: 0.3, R: 1.92, thick: 0.05, z: Z_DES, metal: 0, coat: 1, tint: 0xb4c0c8, comply: 0.08 }),
+  brs:  makeStent({ pattern: 'zring', N: 8, rings: 6, L: 0.93, bridge: 0.34, R: 1.92, thick: 0.09, z: Z_BRS, metal: 0, poly: 1, comply: 0.25 })
+};
+const HU = S.hero.material.uniforms;
+const motes = makeMotes();
+const elution = makeElution(Z_DES);
+const del = makeDelivery();
+const stage = makeStage();
+const chart = makeChart();
+chart.grp.position.set(-4.4, -1.9, Z_HERO - 8.2); chart.grp.rotation.y = -0.22; chart.grp.scale.setScalar(1.25);
+const cloud = makePatientCloud();
+const clr = makeClearance();
+
+function stentHalf(u) {
+  const arc = u.uRadius.value * Math.PI / u.uN.value;
+  const hz = Math.sqrt(Math.max(u.uL.value ** 2 - arc * arc, 0.0004));
+  return 0.5 * ((u.uRings.value - 1) * (hz + u.uBridge.value) + u.uLevels.value * hz);
+}
+const periWave = (z, t) => Math.pow(0.5 + 0.5 * Math.sin(z * PHYS.uPeriK.value + t * PHYS.uPeriW.value), 6);
+
+/* =====================================================================
+   7 · Choreography — every visual is a pure function of scroll (g ∈ [0,5])
+       plus the interactive states (trilemma point, deployment console)
+   ===================================================================== */
+const camPos = track([
+  [0.00, [0.3, 0.12, 13]], [0.083, [0.3, 0.12, 12]], [0.25, [-0.35, 0.25, 4.5]], [0.417, [0.45, -0.2, -2.6]],
+  [0.583, [-0.4, 0.3, -20.6]], [0.75, [0.4, 0.1, -38.6]], [0.917, [0.0, 0.0, -51]], [0.985, [0.35, 0.1, -56.5]],
+  [1.06, [3.6, 0.9, -58.6]], [1.125, [9.5, 3.2, -59.5]], [1.375, [8.4, 1.5, -68.2]], [1.625, [6.2, 2.6, -60.2]], [1.875, [12.5, 0.8, -66]],
+  [2.0, [11, 3, -62]], [2.125, [7.8, 3.3, -58.8]], [2.375, [6.8, 4.4, -57.5]], [2.625, [5.8, 5.0, -56.2]], [2.875, [6.2, 4.4, -55.6]],
+  [3.0, [8.5, 3, -60]], [3.125, [8.2, 2.4, -61.5]], [3.375, [7.0, 1.4, -64.2]], [3.625, [8.4, 2.8, -61]], [3.875, [7.6, 2.0, -62.6]],
+  [4.0, [8.5, 3.0, -60.5]], [4.114, [8.8, 3.3, -60]], [4.341, [7.6, 4.6, -62.6]], [4.568, [9.2, 1.6, -70.5]], [4.795, [13.5, 5.2, -57.5]]
+]);
+const camTgt = track([
+  [0.00, [0, 0, -10]], [0.25, [0.1, -0.1, -12]], [0.417, [0.1, 0, -9]], [0.583, [0.2, -0.2, -27]], [0.75, [-0.1, 0, -45]],
+  [0.917, [0, 0, -70]], [0.985, [0, 0, -66]], [1.125, [0, 0, -66]], [1.375, [0, 0, -66]], [1.625, [0, 0, -63.4]], [1.875, [0, 0.5, -66]],
+  [2.0, [0, 0, -66]], [2.125, [0, 0, -66]], [2.375, [-1.4, 0.4, -66.8]], [2.625, [-2.2, 0.5, -67.2]], [2.875, [-2.0, 0.4, -67]],
+  [3.0, [0, 0, -66]], [3.125, [0, 0, -65.4]], [3.375, [0, 0, -66]], [3.625, [0, 0, -64.6]], [3.875, [0, 0, -65]], [4.0, [0, 0, -66]]
+]);
+const periTrack = track([[0, 0.12], [0.25, 0.17], [0.4, 0.13], [0.917, 0.2], [1.05, 0.06], [1.95, 0.05], [2.05, 0], [2.95, 0], [3.1, 0.05], [4.0, 0.04], [4.2, 0.03]]);
+
+// --- trilemma state (barycentric: radial force, anti-migration, deliverability)
+const tri = { mode: 'auto', w: [1 / 3, 1 / 3, 1 / 3], target: [1 / 3, 1 / 3, 1 / 3], pathT: 0, crimp: 0 };
+function triAuto(p2, t) {
+  if (p2 < 0.25) return [1 / 3 + 0.08 * Math.sin(t * 0.7), 1 / 3 + 0.08 * Math.sin(t * 0.7 + 2.1), 1 / 3 + 0.08 * Math.sin(t * 0.7 + 4.2)];
+  if (p2 < 0.5) return [0.82, 0.09, 0.09];
+  if (p2 < 0.75) return [0.14, 0.76, 0.1];
+  return [0.08, 0.07, 0.85];
+}
+const TRI_PATH = [[0.1, 0.1, 0.8], [0.52, 0.43, 0.05], [0.2, 0.05, 0.75]];
+function triPath(s) {
+  const k = (a, b) => sstep(a, b, s);
+  const A = TRI_PATH[0], B = TRI_PATH[1], C = TRI_PATH[2];
+  const ab = k(0.12, 0.4), bc = k(0.62, 0.85);
+  const w = A.map((v, i) => lerp(lerp(v, B[i], ab), C[i], bc));
+  const crimp = 1 - ab + bc * 0.45; // crimped at delivery, contracted at retrieval
+  return { w, crimp: clamp(crimp) };
+}
+
+// --- dual-stimuli deployment state
+const dep = { mode: 'scroll', Tb: 24, Tl: 24, nir: 0, nirOn: false, rec1: 0, rec2: 0, sheath: 0, retrieve: 0, nirTimer: 0, _lastNir: 0 };
+const R_CRIMP = 0.62, R_DEPLOY = 1.9, R_RETRIEVE = 1.36;
+function depFromScroll(p4) {
+  const Tb = lerp(24, 37, sstep(0.22, 0.4, p4));
+  const nir = sstep(0.55, 0.6, p4) * (1 - sstep(0.8, 0.86, p4));
+  const Tl = Tb + 10.5 * sstep(0.58, 0.7, p4) * (1 - sstep(0.8, 0.9, p4) * 0.7);
+  return { Tb, Tl, nir, rec1: sstep(34.5, 37, Tb), rec2: sstep(0.66, 0.72, p4), sheath: sstep(0.05, 0.2, p4), retrieve: sstep(0.8, 0.95, p4) };
+}
+function depStep(dt) { // manual physics: first-order heating, one-way shape recovery
+  const target = dep.Tb + (dep.nirOn ? 10.5 : 0);
+  dep.nir = damp(dep.nir, dep.nirOn ? 1 : 0, 6, dt);
+  dep.Tl = damp(dep.Tl, target, dep.nirOn ? 1.8 : 1.9, dt);
+  dep.rec1 = Math.max(dep.rec1, sstep(34.5, 36.8, dep.Tl));
+  if (dep.rec1 > 0.95) dep.rec2 = Math.min(1, Math.max(dep.rec2, sstep(44, 45.5, dep.Tl)));
+  if (dep.nirOn) { dep.nirTimer -= dt; if (dep.nirTimer <= 0) dep.nirOn = false; }
+  dep.sheath = damp(dep.sheath, 1, 2.5, dt);
+  dep.retrieve = damp(dep.retrieve, dep.rec2 > 0.98 ? 0.6 : 0, 0.8, dt);
+}
+
+// --- inverse design (epochs follow scroll so it is scrubbable)
+const inv = { epoch: 0, conform: 0 };
+let feaScale = 1;
+const cycTrack = track([[0, 0], [0.25, 1], [0.45, 2], [0.6, 3], [0.68, 4], [0.75, 5], [0.9, 6]]);
+
+const stats = { stress: 0, device: -1, wave: 0, cp: 0, gap: 0, dia: 0 };
+function updateScene(g, t, dt) {
+  PHYS.uTime.value = t;
+  const p1 = seg(g, 0, 1), p2 = seg(g, 1, 2), p3 = seg(g, 2, 3), p4 = seg(g, 3, 4), p5 = seg(g, 4, 5);
+  const inside = 1 - sstep(0.95, 1.05, g);
+  // camera with gentle breathing when external
+  const cp = camPos(g), ct = camTgt(g);
+  const br = (1 - inside) * (REDUCED ? 0 : 1);
+  camera.position.set(cp[0] + Math.sin(t * 0.21) * 0.35 * br, cp[1] + Math.sin(t * 0.17) * 0.2 * br + Math.sin(t * 1.3) * 0.02 * inside, cp[2] + Math.cos(t * 0.19) * 0.3 * br);
+  camera.lookAt(ct[0], ct[1], ct[2]);
+  camera.fov = lerp(64, 42, 1 - inside);
+  const off = (innerWidth >= 1024 ? 0.075 : 0) * (1 - inside);
+  camera.setViewOffset(innerWidth, innerHeight, -off * innerWidth, 0, innerWidth, innerHeight);
+  LIGHT.uCam.value.copy(camera.position);
+  headLight.position.copy(camera.position); headLight.intensity = lerp(0.6, 5, inside);
+  keyLight.intensity = lerp(2.2, 0, inside);
+
+  // post / HUD modes
+  lens.uniforms.uEndo.value = inside;
+  $('#reticle').style.opacity = (inside * 0.9).toFixed(3);
+  bloom.strength = lerp(0.55, 0.6, 1 - inside);
+
+  // physiology
+  PHYS.uPeri.value = periTrack(g);
+  PHYS.uPatient.value = sstep(4.46, 4.62, g);
+
+  // lumen modes
+  const act3Hide = sstep(1.98, 2.1, g) * (1 - sstep(2.95, 3.07, g));
+  LU.uDissolve.value = act3Hide > 0.001 ? act3Hide * 1.02 : 0;
+  LU.uCutX.value = g < 0.955 ? 99 : lerp(2.4, 0.0, sstep(0.955, 1.02, g));
+  LU.uHead.value = lerp(0.35, 1.7, inside);
+  LU.uKey.value = lerp(1.05, 0, inside);
+  LU.uAmb.value = lerp(0.06, 0.012, inside);
+  LU.uFogK.value = lerp(0.006, 0.018, inside);
+  LU.uTwin.value = sstep(0.86, 0.95, g) * 0.25 * inside + sstep(4.0, 4.3, g) * 0.35 + sstep(4.46, 4.62, g) * 0.3;
+  LU.uGridA.value = (1 - inside) * 0.22 * (1 - act3Hide);
+  LU.uHeat.value = sstep(1.05, 1.2, g) * (1 - sstep(1.95, 2.02, g)) * 0.85 + sstep(3.3, 3.45, g) * 0.9 * (1 - sstep(3.95, 4.05, g)) + sstep(4.62, 4.75, g) * 0.7;
+  LU.uLumK.value = 0.078 * sstep(1.72, 1.8, g) * (1 - sstep(1.95, 2.0, g));
+  motes.material.uniforms.uOp.value = inside;
+
+  // ---------- Act 1 : historical stents ----------
+  const vis1 = g < 1.02;
+  for (const k of ['bms', 'des', 'brs']) S[k].visible = vis1;
+  const bm = S.bms.material.uniforms, de = S.des.material.uniforms, bs = S.brs.material.uniforms;
+  const isr = sstep(0.4, 0.5, g), thromb = sstep(0.53, 0.6, g), elute = sstep(0.47, 0.53, g) * (1 - sstep(0.6, 0.64, g));
+  const recoil = sstep(0.69, 0.76, g) * 0.13, frac = sstep(0.7, 0.77, g), resorb = sstep(0.74, 0.84, g) * 0.28;
+  de.uElute.value = elute; de.uThromb.value = thromb; elution.material.uniforms.uOp.value = elute * inside;
+  bs.uRecoil.value = recoil; bs.uFrac.value = frac; bs.uDissolve.value = resorb;
+  for (const m of [bm, de, bs]) { m.uInside.value = inside; m.uHead.value = lerp(0.4, 1.5, inside); m.uKey.value = lerp(1, 0, inside); }
+  const sv = LU.uS.value, sf = LU.uSf.value;
+  sv[1].set(Z_BMS, bm.uRadius.value, stentHalf(bm), 0); sf[1].set(isr, 0, vis1 ? 1 : 0, 0);
+  sv[2].set(Z_DES, de.uRadius.value, stentHalf(de), 0); sf[2].set(0, thromb, vis1 ? 1 : 0, 0);
+  sv[3].set(Z_BRS, bs.uRadius.value * (1 - recoil * 0.6), stentHalf(bs), 0); sf[3].set(0, 0, vis1 ? 1 : 0, 0);
+  // device in view (telemetry)
+  stats.device = g > 0.33 && g < 0.5 ? 0 : g >= 0.5 && g < 0.67 ? 1 : g >= 0.67 && g < 0.86 ? 2 : -1;
+  const devZ = [Z_BMS, Z_DES, Z_BRS][stats.device] ?? camera.position.z - 6;
+  stats.wave = periWave(devZ, t);
+
+  // ---------- Hero stent across Acts 2–5 ----------
+  let R = 1.94, flare = 0.06, kS = 0, thick = 0.05, conform = 0, fea = 0, smp = 0, metal = 1, printZ = 2, tempC = 0, nirGlow = 0, glow = 0, heroZ = Z_HERO, comply = 0.15;
+  // Act 2: trilemma
+  if (tri.mode === 'auto') tri.target = triAuto(p2, t);
+  if (tri.mode === 'path') { tri.pathT = (tri.pathT + dt / 7) % 1; const pp = triPath(tri.pathT); tri.target = pp.w; tri.crimp = pp.crimp; } else tri.crimp = damp(tri.crimp, 0, 3, dt);
+  for (let i = 0; i < 3; i++) tri.w[i] = damp(tri.w[i], tri.target[i], 5, dt);
+  const [wRF, wAM, wDL] = tri.w;
+  const a2 = sstep(0.97, 1.1, g) * (1 - sstep(1.96, 2.04, g));
+  R = lerp(1.94, lerp(2.0 * (1.02 + 0.14 * wRF), 0.72, tri.crimp * 0.9), a2);
+  flare = lerp(0.06, 0.05 + 0.34 * wAM, a2);
+  kS = LU.uLumK.value * (1 - wDL);
+  thick = lerp(0.05, 0.04 + 0.03 * wRF, a2);
+
+  // Act 3: rotary 4D print + thermomechanical programming
+  const a3 = g > 2.02 && g < 3.02;
+  if (!a3) chart.grp.visible = false;
+  stage.grp.visible = a3;
+  const c = cycTrack(p3);
+  const cs = cycleState(c);
+  if (g >= 2.02) { smp = 1; metal = 0; }
+  if (a3) {
+    printZ = c < 1 ? lerp(-0.05, 1.06, seg(c, 0.08, 0.95)) : 2;
+    R = 1.94 - (1.94 - 0.6) * (cs.e / 70);
+    tempC = sstep(30, 42, cs.T); glow = 0.25 * tempC;
+    chart.grp.visible = c > 0.92;
+    flare = 0.04;
+    stage.floor.material.uniforms.uOp.value = sstep(2.02, 2.12, g) * (1 - sstep(2.93, 3.0, g));
+    stage.mandrel.material.opacity = 0.55 * (1 - sstep(0.9, 1.25, c)) * sstep(2.03, 2.1, g);
+    const pz = lerp(-1, 1, clamp(printZ)) * stentHalf(HU);
+    stage.nozzle.position.set(0, 0, pz); stage.nozzle.visible = c < 1.02 && printZ < 1.1;
+    const n = Math.floor(clamp(c / 6) * 600); chart.cg.setDrawRange(0, Math.max(2, n + 1));
+    const mp = chart.map(cs); chart.marker.position.copy(mp);
+    const dp = chart.drop.geometry.attributes.position; dp.setXYZ(0, mp.x, mp.y, mp.z); dp.setXYZ(1, mp.x, 0, mp.z); dp.needsUpdate = true;
+    chart.stepLabels.forEach((s, i) => s.material.opacity = c > i + 0.2 ? 1 : 0.18);
+  }
+
+  // Act 4: dual-stimuli deployment (scroll-driven unless the console is in manual mode)
+  const a4 = g > 2.97 && g < 4.03;
+  del.grp.visible = a4; if (!a4) clr.grp.visible = false;
+  let D = depFromScroll(p4);
+  if (dep.mode === 'manual') { depStep(dt); D = dep; }
+  else Object.assign(dep, D);
+  if (a4) {
+    const b4 = sstep(2.96, 3.04, g);
+    const rr = lerp(lerp(R_CRIMP, R_DEPLOY, D.rec1), R_RETRIEVE, D.rec2);
+    R = lerp(R, rr, b4); flare = lerp(flare, 0.02 + 0.02 * D.rec1 * (1 - D.rec2), b4); comply = 0.6;
+    tempC = lerp(tempC, sstep(31, 38, D.Tl), b4); nirGlow = D.nir * seg(D.Tl, 38, 45); glow = 0.1 + 0.16 * tempC;
+    heroZ = Z_HERO + D.retrieve * 3.2;
+    del.sheath.position.z = del.sheathZ0 + D.sheath * 8.6;
+    del.sheath.visible = D.sheath < 0.995;
+    const cathOut = 1 - sstep(0.1, 0.6, D.rec1);
+    del.cath.position.z = Z_HERO + 2.2 + (1 - cathOut) * 9; del.tip.position.z = Z_HERO - 4.15 + (1 - cathOut) * 9;
+    del.cath.visible = del.tip.visible = cathOut > 0.01;
+    del.scope.position.z = Z_HERO + 5.5 - D.nir * 1.1 + D.retrieve * 2.2;
+    del.beam.material.uniforms.uI.value = D.nir * (0.85 + 0.15 * Math.sin(t * 40));
+    lens.uniforms.uFlash.value = Math.min(0.5, Math.max(0, D.nir - dep._lastNir) * 1.2 + lens.uniforms.uFlash.value * 0.9);
+    dep._lastNir = D.nir;
+    const co = sstep(0.3, 0.9, D.rec2) * (1 - D.retrieve * 0.8);
+    clr.grp.visible = co > 0.01; clr.grp.position.z = heroZ;
+    clr.ringS.scale.setScalar(rr); clr.ringW.scale.setScalar(1.95);
+    clr.ringS.material.opacity = co; clr.ringW.material.opacity = co * 0.8; clr.lbl.material.opacity = co;
+    clr.lbl.position.set(0, 2.35, 0);
+    stats.dia = rr * 12.5; stats.cp = Math.max(0, rr - 1.8) * 110; stats.gap = Math.max(0, 1.9 - rr) * 6.25;
+  }
+
+  // Act 5: hyperelastic FEA + PINN inverse design
+  if (g > 3.97) {
+    inv.epoch = Math.floor(20000 * sstep(0.18, 0.78, p5));
+    inv.conform = 1 - Math.exp(-inv.epoch / 3200);
+    fea = sstep(3.98, 4.12, g);
+    conform = PHYS.uPatient.value * inv.conform;
+    const b5 = sstep(3.97, 4.06, g);
+    R = lerp(R, 1.97, b5); heroZ = lerp(heroZ, Z_HERO, b5); tempC = lerp(tempC, 0.55, b5); nirGlow *= 1 - b5; comply = 0.6;
+    cloud.material.uniforms.uOp.value = sstep(4.42, 4.55, g);
+    cloud.material.uniforms.uScan.value = Z_HERO - 7 + ((t * 2.2) % 14);
+    LU.uDissolve.value = Math.max(LU.uDissolve.value, sstep(4.5, 4.64, g) * 0.62);
+    HU.uFeaScale.value = feaScale;
+  } else cloud.material.uniforms.uOp.value = 0;
+
+  // push hero uniforms
+  HU.uRadius.value = R; HU.uFlare.value = flare; HU.uK.value = kS; HU.uThick.value = thick; HU.uConform.value = conform;
+  HU.uFea.value = fea; HU.uSmp.value = smp; HU.uMetal.value = metal; HU.uPrint.value = printZ; HU.uTempC.value = tempC;
+  HU.uNir.value = nirGlow; HU.uGlow.value = glow; HU.uZc.value = heroZ; HU.uComply.value = comply;
+  HU.uInside.value = inside; HU.uHead.value = lerp(0.35, 1.5, inside); HU.uKey.value = lerp(1.1, 0, inside);
+  HU.uStressVis.value = g < 2.0 ? 1 : 0;
+  S.hero.visible = g > 0.8 && !(g > 1.99 && g < 2.06);
+  sv[0].set(heroZ, R, stentHalf(HU), flare); sf[0].set(0, 0, S.hero.visible && g > 0.9 ? 1 : 0, conform);
+  LU.uSk.value = kS;
+  return { p1, p2, p3, p4, p5, inside, c, cs, D };
+}
+/* =====================================================================
+   8 · Instruments
+   ===================================================================== */
+const ACTS = ['Physiological Environment', 'The Stenting Trilemma', '4D Printing & Smart Polymers', 'Dual-Stimuli Actuation', 'Computational Inverse Design'];
+const insts = [0, 1, 2, 3, 4].map(i => $('#inst' + i));
+const navLinks = [...document.querySelectorAll('.nav a')];
+let curAct = -1;
+function setAct(i) {
+  if (i === curAct) return; curAct = i;
+  insts.forEach((el, k) => el.classList.toggle('on', k === i));
+  navLinks.forEach((a, k) => a.classList.toggle('on', k === i));
+  $('#pip').classList.toggle('on', i === 3);
+  $('#actcode').textContent = 'ACT 0' + (i + 1); $('#acttitle').textContent = ACTS[i];
+}
+const fmt = (v, d = 1) => v.toFixed(d);
+const txt = (id, v) => { const e = document.getElementById(id); if (e && e.textContent !== v) e.textContent = v; };
+const wid = (id, f) => { const e = document.getElementById(id); if (e) e.style.width = (clamp(f) * 100).toFixed(1) + '%'; };
+
+// ---------- sparklines ----------
+function spark(cv, data, lo, hi, color, fill = true) {
+  const x = cv.getContext('2d'), W = cv.width, H = cv.height; x.clearRect(0, 0, W, H);
+  x.strokeStyle = 'rgba(94,231,255,.12)'; x.lineWidth = 1; x.beginPath(); x.moveTo(0, H / 2); x.lineTo(W, H / 2); x.stroke();
+  x.beginPath(); data.forEach((v, i) => { const px = i / (data.length - 1) * W, py = H - (v - lo) / (hi - lo) * (H - 6) - 3; i ? x.lineTo(px, py) : x.moveTo(px, py); });
+  x.strokeStyle = color; x.lineWidth = 2; x.shadowColor = color; x.shadowBlur = 6; x.stroke(); x.shadowBlur = 0;
+  if (fill) { x.lineTo(W, H); x.lineTo(0, H); x.closePath(); const gr = x.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, color + '33'); gr.addColorStop(1, color + '00'); x.fillStyle = gr; x.fill(); }
+}
+const bufG = Array(90).fill(2.4), bufI = Array(90).fill(7.0), bufP = Array(160).fill(8);
+let telT = 0, cycBase = 1284112;
+function telemetry(t, dt) {
+  telT += dt; if (telT < 0.1) return; telT = 0;
+  const pg = clamp(2.5 + 0.62 * Math.sin(t * 0.11) + 0.24 * Math.sin(t * 0.37 + 1) + (Math.random() - 0.5) * 0.06, 1.5, 3.5);
+  const pi = clamp(7.0 + 0.28 * Math.sin(t * 0.13 + 2) + 0.12 * Math.sin(t * 0.5) + (Math.random() - 0.5) * 0.03, 6.5, 7.5);
+  const pr = 8 + 34 * stats.wave + (Math.random() - 0.5) * 1.5;
+  bufG.push(pg); bufG.shift(); bufI.push(pi); bufI.shift(); bufP.push(pr); bufP.shift();
+  if (curAct !== 0) return;
+  txt('phG', fmt(pg, 2)); txt('phI', fmt(pi, 2)); txt('peP', fmt(pr, 0)); txt('peFreq', fmt(Math.abs(PHYS.uPeriW.value) / 6.2832 * 60, 1));
+  spark($('#spG'), bufG, 1.5, 3.5, '#ffb547'); spark($('#spI'), bufI, 6.5, 7.5, '#2dd4bf'); spark($('#spP'), bufP, 0, 50, '#5ee7ff');
+  const cyc = cycBase + Math.floor(t * Math.abs(PHYS.uPeriW.value) / 6.2832);
+  txt('cyc', cyc.toLocaleString('en-US').replace(/,/g, ' ') + ' cyc');
+  const comp = PHYS.uPeri.value * stats.wave * 100;
+  txt('ldR', fmt(comp, 1)); txt('ldA', fmt(comp * 0.34, 1)); txt('ldT', fmt(comp * 0.21, 2));
+  const dev = stats.device;
+  const names = ['BMS · 316L stainless / Co-Cr', 'DES · Co-Cr + sirolimus-class polymer', 'BRS · PLLA scaffold'];
+  const chips = [['Gen 1 · 1992', '#5ee7ff'], ['Gen 2 · 2002', '#ffb547'], ['Gen 3 · 2012', '#2dd4bf']];
+  if (dev >= 0) {
+    const base = [182, 176, 41][dev], amp = [138, 130, 36][dev], lim = [480, 480, 90][dev];
+    const s = base + amp * stats.wave;
+    txt('devName', names[dev]); txt('devChip', chips[dev][0]); $('#devChip').style.color = chips[dev][1];
+    txt('devStress', fmt(s, 0) + ' MPa'); wid('devStressBar', s / lim); txt('devAdapt', 'NONE · static geometry');
+  } else { txt('devName', '—'); txt('devChip', 'none'); $('#devChip').style.color = ''; txt('devStress', '—'); wid('devStressBar', 0); txt('devAdapt', '—'); }
+}
+
+// ---------- trilemma ternary ----------
+const TV = [[150, 18], [272, 228], [28, 228]]; // RF, AM, DL
+const tern = $('#tern'), handle = $('#triHandle');
+function baryToXY(w) { return [w[0] * TV[0][0] + w[1] * TV[1][0] + w[2] * TV[2][0], w[0] * TV[0][1] + w[1] * TV[1][1] + w[2] * TV[2][1]]; }
+function xyToBary(x, y) {
+  const [a, b, c] = TV, det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+  let l1 = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / det;
+  let l2 = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / det;
+  let l3 = 1 - l1 - l2; const w = [l1, l2, l3].map(v => Math.max(0, v)); const s = w[0] + w[1] + w[2];
+  return w.map(v => v / s);
+}
+function ternPointer(e) {
+  const r = tern.getBoundingClientRect(), vb = tern.viewBox.baseVal;
+  const x = (e.clientX - r.left) / r.width * vb.width, y = (e.clientY - r.top) / r.height * vb.height;
+  tri.mode = 'manual'; tri.target = xyToBary(x, y); txt('triMode', 'manual'); $('#triPath').style.opacity = 0;
+}
+let dragging = false;
+tern.addEventListener('pointerdown', e => { dragging = true; tern.setPointerCapture(e.pointerId); ternPointer(e); });
+tern.addEventListener('pointermove', e => { if (dragging) ternPointer(e); });
+tern.addEventListener('pointerup', () => dragging = false);
+$('#triAuto').onclick = () => { tri.mode = 'auto'; txt('triMode', 'auto'); $('#triPath').style.opacity = 0; };
+$('#tri4d').onclick = () => {
+  tri.mode = 'path'; tri.pathT = 0; txt('triMode', '4D · time');
+  const pts = []; for (let i = 0; i <= 60; i++) pts.push(baryToXY(triPath(i / 60).w));
+  $('#triPath').setAttribute('d', 'M' + pts.map(p => p.map(v => v.toFixed(1)).join(',')).join('L')); $('#triPath').style.opacity = 1;
+};
+function trilemmaHUD() {
+  const [a, b, c] = tri.w, kL = LU.uLumK.value / 0.078;
+  const [x, y] = baryToXY(tri.w); handle.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+  wid('b0a', 0.15 + 0.85 * a); wid('b0b', 0.08 + 0.8 * a + 0.1 * b);
+  wid('b1a', 0.15 + 0.85 * b); wid('b1b', 1 - 0.8 * b - 0.1 * a);
+  wid('b2a', 0.15 + 0.85 * c); wid('b2b', 1 - 0.8 * c);
+  txt('mRF', fmt(4 + 18 * a, 1)); txt('mCP', fmt(5 + 70 * a + 30 * b + 25 * c * kL, 0)); txt('mMR', fmt(32 * Math.pow(1 - b, 1.5) * (1 - 0.5 * a), 1));
+  txt('mEF', fmt(2 + 14 * b + 4 * a, 1)); txt('mCR', fmt(10 + 16 * (1 - c) - 8 * tri.crimp, 0)); txt('mSL', fmt(0.2 + 3.2 * c * kL, 2));
+}
+
+// ---------- programming cycle ----------
+const netCv = $('#netCv'), netX = netCv.getContext('2d');
+const progLis = [...document.querySelectorAll('#progSteps li')];
+function drawNet(T, strain, t) {
+  const W = netCv.width, H = netCv.height, x = netX; x.clearRect(0, 0, W, H);
+  const mob = sstep(T_TRANS - 5, T_TRANS + 5, T), sx = 1 + strain * 0.9;
+  const col = mob > 0.5 ? '#ffb547' : '#5ee7ff';
+  const cols = 6, rows = 3, pad = 40, gw = (W - 2 * pad) / (cols - 1) / 1.9, gh = (H - 2 * pad) / (rows - 1);
+  const P = (i, j) => [W / 2 + (i - (cols - 1) / 2) * gw * sx, pad + j * gh / (1 + strain * 0.5) + (H - 2 * pad) * strain * 0.17];
+  x.lineWidth = 2.2; x.strokeStyle = col; x.globalAlpha = 0.85;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const nb = []; if (i < cols - 1) nb.push([i + 1, j]); if (j < rows - 1) nb.push([i, j + 1]);
+    for (const [a, b] of nb) {
+      const [x0, y0] = P(i, j), [x1, y1] = P(a, b), len = Math.hypot(x1 - x0, y1 - y0), nx = -(y1 - y0) / len, ny = (x1 - x0) / len;
+      const amp = (1 - strain * 1.1) * (5 + 9 * mob), ph = (i * 7 + j * 13 + a) * 1.3;
+      x.beginPath();
+      for (let k = 0; k <= 28; k++) { const u = k / 28, w = Math.sin(u * Math.PI) * amp * Math.sin(u * 18 + ph + t * 6 * mob) * (0.6 + 0.4 * Math.sin(ph + t * 2 * mob)); const px = lerp(x0, x1, u) + nx * w, py = lerp(y0, y1, u) + ny * w; k ? x.lineTo(px, py) : x.moveTo(px, py); }
+      x.stroke();
+    }
+  }
+  x.globalAlpha = 1; x.fillStyle = '#e8fbff';
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const [px, py] = P(i, j); x.fillRect(px - 5, py - 5, 10, 10); }
+}
+function programmingHUD(c, cs, t) {
+  const step = Math.min(5, Math.floor(c));
+  progLis.forEach((li, i) => { li.style.color = i === step ? '#ffb547' : i < step ? '#d3e9ef' : '#4d6470'; li.style.textShadow = i === step ? '0 0 10px rgba(255,181,71,.5)' : 'none'; });
+  const states = ['printing', 'heating', 'crimping', 'cooling · fixing', 'fixed', 'recovering'];
+  txt('progState', states[step]);
+  txt('pT', fmt(cs.T, 1)); txt('pS', fmt(cs.s, 2)); txt('pE', fmt(cs.e, 1));
+  const mod = Math.exp(lerp(Math.log(1900), Math.log(4.8), sstep(T_TRANS - 7, T_TRANS + 7, cs.T)));
+  txt('pMod', mod > 100 ? fmt(mod / 1000, 2) + ' GPa' : fmt(mod, 1) + ' MPa'); wid('pModBar', 0.08 + 0.92 * (Math.log(mod) - Math.log(4)) / (Math.log(1900) - Math.log(4)));
+  txt('pRf', c >= 4.9 ? '97.6 %' : '—'); txt('pRr', c >= 5.9 ? '96.0 %' : c > 5 ? fmt(96 * sstep(5.25, 5.8, c), 1) + ' %' : '—');
+  txt('pLay', c < 1 ? Math.floor(clamp(seg(c, 0.08, 0.95)) * 240) + ' / 240' : '240 / 240');
+  const mob = sstep(T_TRANS - 5, T_TRANS + 5, cs.T);
+  txt('netState', c >= 3.9 && c < 5.2 ? 'glassy · entropy stored' : mob > 0.5 ? 'rubbery · chains mobile' : 'glassy · frozen');
+  $('#netState').style.color = mob > 0.5 ? '#ffb547' : '#5ee7ff';
+  drawNet(cs.T, cs.e / 100, t);
+}
+
+// ---------- deployment console ----------
+const tempS = $('#tempS'), bNir = $('#bNir');
+function manual() { if (dep.mode !== 'manual') { dep.mode = 'manual'; } }
+tempS.addEventListener('input', () => { manual(); dep.Tb = +tempS.value; });
+$('#bDeploy').onclick = () => { manual(); gsap.to(dep, { Tb: 37, duration: 2.2, ease: 'power2.inOut', onUpdate: () => tempS.value = dep.Tb }); };
+bNir.onclick = () => { manual(); dep.nirOn = true; dep.nirTimer = 4.5; };
+$('#bReset').onclick = () => { gsap.killTweensOf(dep); Object.assign(dep, { mode: 'scroll', rec1: 0, rec2: 0, nirOn: false, sheath: 0, retrieve: 0 }); };
+let depLogLast = '';
+function deploymentHUD(D) {
+  txt('tempV', fmt(D.Tl, 1)); txt('pipT', 'T ' + fmt(D.Tl, 1) + ' °C');
+  if (dep.mode === 'scroll' && document.activeElement !== tempS) tempS.value = D.Tb;
+  txt('dRec', fmt((D.rec1 * (1 - D.rec2) + D.rec2) * 100, 0)); txt('dDia', fmt(stats.dia, 1)); txt('dCP', fmt(stats.cp, 1)); txt('dGap', fmt(stats.gap, 1));
+  txt('dNir', fmt(D.nir * 1.0, 2));
+  bNir.disabled = !(D.rec1 > 0.95) || D.rec2 > 0.98;
+  let st = 'crimped · delivery', log = 'Scaffold glassy at ' + fmt(D.Tl, 1) + ' °C. Sheath ' + (D.sheath > 0.9 ? 'retracted' : 'retracting') + ', waiting for the thermal trigger.';
+  if (D.rec1 > 0.02 && D.rec1 < 0.95) { st = 'expanding'; log = 'T > T₁: switching segments soften, shape recovery ' + fmt(D.rec1 * 100, 0) + ' %.'; }
+  if (D.rec1 >= 0.95) { st = 'deployed · 37 °C'; log = 'Wall apposition reached. Contact pressure ' + fmt(stats.cp, 1) + ' kPa, inside the atraumatic band. Cooling will not re-crimp the stent (one-way SMP).'; }
+  if (D.nir > 0.1 && D.rec2 < 0.95) { st = 'NIR · heating'; log = 'Photothermal heating ' + fmt(D.Tl, 1) + ' °C. Second transition T₂ ≈ 45 °C ' + (D.Tl > 44 ? 'reached' : 'approaching') + '.'; }
+  if (D.rec2 >= 0.95) { st = 'contracted · retrievable'; log = 'Second shape recovered. Clearance ' + fmt(stats.gap, 1) + ' mm, zero wall contact: atraumatic retrieval.'; }
+  txt('depState', st); if (log !== depLogLast) { txt('depLog', log); depLogLast = log; }
+}
+
+// ---------- hyperelastic fits (real least squares on a representative dataset) ----------
+const LAM = Array.from({ length: 21 }, (_, i) => 1 + i * 0.1);
+const yeohP = (l, C) => { const I = l * l + 2 / l - 3; return 2 * (l - 1 / (l * l)) * (C[0] + 2 * C[1] * I + 3 * C[2] * I * I); };
+const mrP = (l, C) => 2 * (l - 1 / (l * l)) * (C[0] + C[1] / l);
+const DATA = LAM.map((l, i) => yeohP(l, [0.52, -0.021, 0.0034]) * (1 + 0.022 * Math.sin(i * 2.7 + 0.4)) + 0.01 * Math.cos(i * 1.9));
+function lsq(rows, y) { // normal equations, Gaussian elimination
+  const n = rows[0].length, A = Array.from({ length: n }, () => Array(n + 1).fill(0));
+  rows.forEach((r, k) => { for (let i = 0; i < n; i++) { for (let j = 0; j < n; j++) A[i][j] += r[i] * r[j]; A[i][n] += r[i] * y[k]; } });
+  for (let i = 0; i < n; i++) { let p = i; for (let k = i + 1; k < n; k++) if (Math.abs(A[k][i]) > Math.abs(A[p][i])) p = k; [A[i], A[p]] = [A[p], A[i]];
+    for (let k = i + 1; k < n; k++) { const f = A[k][i] / A[i][i]; for (let j = i; j <= n; j++) A[k][j] -= f * A[i][j]; } }
+  const x = Array(n).fill(0); for (let i = n - 1; i >= 0; i--) { let s = A[i][n]; for (let j = i + 1; j < n; j++) s -= A[i][j] * x[j]; x[i] = s / A[i][i]; }
+  return x;
+}
+const r2 = (f) => { const m = DATA.reduce((a, b) => a + b, 0) / DATA.length; let ss = 0, st = 0; LAM.forEach((l, i) => { ss += (DATA[i] - f(l)) ** 2; st += (DATA[i] - m) ** 2; }); return 1 - ss / st; };
+const CY = lsq(LAM.map(l => { const I = l * l + 2 / l - 3, b = 2 * (l - 1 / (l * l)); return [b, b * 2 * I, b * 3 * I * I]; }), DATA);
+const CM = lsq(LAM.map(l => { const b = 2 * (l - 1 / (l * l)); return [b, b / l]; }), DATA);
+const MODELS = {
+  yeoh: { name: 'Yeoh', eq: 'W = Σ C<sub>i0</sub>(Ī₁ − 3)<sup>i</sup>, i = 1..3', f: l => yeohP(l, CY), params: [['C₁₀', CY[0]], ['C₂₀', CY[1]], ['C₃₀', CY[2]]], sf: 1.84, scale: 1.0 },
+  mr: { name: 'Mooney-Rivlin', eq: 'W = C<sub>10</sub>(Ī₁ − 3) + C<sub>01</sub>(Ī₂ − 3)', f: l => mrP(l, CM), params: [['C₁₀', CM[0]], ['C₀₁', CM[1]]], sf: 1.62, scale: 1.12 }
+};
+let model = 'yeoh';
+function solveLam(f, P) { let lo = 1, hi = 3; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; f(m) < P ? lo = m : hi = m; } return (lo + hi) / 2; }
+function setModel(k) {
+  model = k; const M = MODELS[k]; feaScale = M.scale;
+  $('#btnYeoh').classList.toggle('hot', k === 'yeoh'); $('#btnMR').classList.toggle('hot', k === 'mr');
+  $('#wEq').innerHTML = M.eq;
+  $('#mParams').innerHTML = M.params.map(([n, v]) => `<dt>${n}</dt><dd>${v.toFixed(4)} MPa</dd>`).join('') + `<dt>R² (uniaxial, λ ≤ 3)</dt><dd>${r2(M.f).toFixed(4)}</dd>`;
+  const lam = solveLam(M.f, 0.95);
+  txt('fVM', fmt(lam * M.f(lam) * 1.18, 2)); txt('fPS', fmt((lam - 1) * 100, 1)); txt('fSF', fmt(M.sf, 2));
+  drawSS();
+}
+function drawSS() {
+  const cv = $('#ssCv'), x = cv.getContext('2d'), W = cv.width, H = cv.height, L = 46, B = 30, T = 12, Rr = 12;
+  x.clearRect(0, 0, W, H);
+  const X = l => L + (l - 1) / 2 * (W - L - Rr), Y = p => H - B - p / 4.5 * (H - B - T);
+  x.strokeStyle = 'rgba(94,231,255,.15)'; x.lineWidth = 1; x.font = '18px "IBM Plex Mono"'; x.fillStyle = '#6f8c99';
+  for (let p = 0; p <= 4; p++) { x.beginPath(); x.moveTo(L, Y(p)); x.lineTo(W - Rr, Y(p)); x.stroke(); x.fillText(p, 18, Y(p) + 6); }
+  for (let l = 1; l <= 3; l += 0.5) { x.fillText(l.toFixed(1), X(l) - 14, H - 6); }
+  x.fillText('P [MPa]', L + 6, T + 14); x.fillText('λ', W - 30, H - B - 8);
+  const curve = (f, col, w, dash) => { x.beginPath(); for (let i = 0; i <= 80; i++) { const l = 1 + i / 40; const px = X(l), py = Y(f(l)); i ? x.lineTo(px, py) : x.moveTo(px, py); } x.setLineDash(dash); x.strokeStyle = col; x.lineWidth = w; x.stroke(); x.setLineDash([]); };
+  curve(MODELS.mr.f, model === 'mr' ? '#ffb547' : 'rgba(255,181,71,.35)', model === 'mr' ? 3 : 2, model === 'mr' ? [] : [8, 6]);
+  curve(MODELS.yeoh.f, model === 'yeoh' ? '#5ee7ff' : 'rgba(94,231,255,.35)', model === 'yeoh' ? 3 : 2, model === 'yeoh' ? [] : [8, 6]);
+  x.fillStyle = '#e8fbff'; LAM.forEach((l, i) => { x.beginPath(); x.arc(X(l), Y(DATA[i]), 4, 0, 6.283); x.fill(); });
+  x.fillStyle = '#5ee7ff'; x.fillText('Yeoh', W - 190, T + 16); x.fillStyle = '#ffb547'; x.fillText('M-R', W - 110, T + 16); x.fillStyle = '#e8fbff'; x.fillText('● exp.', W - 190, T + 40);
+}
+$('#btnYeoh').onclick = () => setModel('yeoh'); $('#btnMR').onclick = () => setModel('mr');
+
+// ---------- PINN diagram + loss ----------
+const nnSvg = $('#nnSvg'), NS = 'http://www.w3.org/2000/svg';
+const LAYERS = [4, 6, 6, 6, 6, 4], nnEdges = [], nnNodes = [];
+(function buildNN() {
+  const xs = LAYERS.map((_, i) => 22 + i * (276 / (LAYERS.length - 1)));
+  const pos = LAYERS.map((n, i) => Array.from({ length: n }, (_, j) => [xs[i], 50 + (j - (n - 1) / 2) * 15]));
+  for (let i = 0; i < LAYERS.length - 1; i++) for (const a of pos[i]) for (const b of pos[i + 1]) {
+    const l = document.createElementNS(NS, 'line'); l.setAttribute('x1', a[0]); l.setAttribute('y1', a[1]); l.setAttribute('x2', b[0]); l.setAttribute('y2', b[1]);
+    l.setAttribute('stroke', '#5ee7ff'); l.setAttribute('stroke-width', '0.6'); l.setAttribute('opacity', '0.15'); nnSvg.appendChild(l); nnEdges.push({ l, layer: i, r: Math.random() });
+  }
+  pos.forEach((col, i) => col.forEach(([x, y]) => { const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', 3.2); c.setAttribute('fill', '#03060a'); c.setAttribute('stroke', i === 0 || i === LAYERS.length - 1 ? '#ffb547' : '#5ee7ff'); nnSvg.appendChild(c); nnNodes.push({ c, layer: i, r: Math.random() }); }));
+  const lab = (t, x, y, a) => { const e = document.createElementNS(NS, 'text'); e.textContent = t; e.setAttribute('x', x); e.setAttribute('y', y); e.setAttribute('fill', '#6f8c99'); e.setAttribute('font-size', '7'); e.setAttribute('font-family', 'IBM Plex Mono'); e.setAttribute('text-anchor', a); nnSvg.appendChild(e); };
+  lab('x y z t', 22, 96, 'middle'); lab('u v w σ', 298, 96, 'middle'); lab('4 × 64 · tanh', 160, 96, 'middle');
+})();
+const LOSS = Array.from({ length: 201 }, (_, i) => { const e = i * 100; const n = 1 + 0.25 * Math.sin(i * 1.7) * Math.exp(-e / 9000);
+  const d = (0.8 * Math.exp(-e / 2500) + 2e-4) * n, p = (3 * Math.exp(-e / 4000) + 6e-4) * n, b = (0.4 * Math.exp(-e / 1500) + 1e-4) * n; return [d + p + b, d, p]; });
+function nnHUD(t) {
+  const ep = inv.epoch; txt('nnEp', ep.toLocaleString('en-US').replace(/,/g, ' '));
+  const k = Math.min(200, Math.floor(ep / 100)); txt('nnLoss', LOSS[k][0].toExponential(2));
+  txt('nnHd', fmt(0.12 + 2.4 * Math.exp(-ep / 3000), 2));
+  const wave = (t * 1.6) % (LAYERS.length + 1);
+  for (const e of nnEdges) { const act = Math.max(0, 1 - Math.abs(e.layer + 0.5 - wave)) * (0.4 + 0.6 * e.r); e.l.setAttribute('opacity', (0.08 + act * 0.7).toFixed(2)); }
+  for (const n of nnNodes) { const act = Math.max(0, 1 - Math.abs(n.layer - wave)); n.c.setAttribute('fill', act > 0.3 ? (n.layer === 0 || n.layer === LAYERS.length - 1 ? '#ffb547' : '#5ee7ff') : '#03060a'); }
+  const cv = $('#lossCv'), x = cv.getContext('2d'), W = cv.width, H = cv.height; x.clearRect(0, 0, W, H);
+  const Y = v => 8 + (1 - (Math.log10(v) + 4) / 4.7) * (H - 16);
+  const cols = ['#e8fbff', '#2dd4bf', '#ffb547'];
+  for (let s = 0; s < 3; s++) { x.beginPath(); for (let i = 0; i <= k; i++) { const px = i / 200 * W, py = Y(LOSS[i][s]); i ? x.lineTo(px, py) : x.moveTo(px, py); } x.strokeStyle = cols[s]; x.lineWidth = s ? 1.6 : 2.4; x.globalAlpha = s ? 0.7 : 1; x.stroke(); }
+  x.globalAlpha = 1;
+}
+/* =====================================================================
+   9 · Scroll (Lenis + ScrollTrigger), loop, loader
+   ===================================================================== */
+gsap.registerPlugin(ScrollTrigger);
+const lenis = new Lenis({ lerp: REDUCED ? 1 : 0.085, smoothWheel: true });
+lenis.on('scroll', ScrollTrigger.update);
+gsap.ticker.add((time) => lenis.raf(time * 1000));
+gsap.ticker.lagSmoothing(0);
+
+const sections = [...document.querySelectorAll('#story > section')];
+let bounds = [];
+function measure() { bounds = sections.map(s => { const r = s.getBoundingClientRect(); return [r.top + scrollY, r.height]; }); }
+function gFromScroll(y) {
+  const c = y + innerHeight * 0.5;
+  for (let i = 0; i < bounds.length; i++) { const [top, h] = bounds[i]; if (c < top + h || i === bounds.length - 1) return i + clamp((c - top) / h); }
+  return 0;
+}
+document.querySelectorAll('.step').forEach((step, i) => {
+  const card = step.querySelector('.card'); if (!card || i === 0) return;
+  ScrollTrigger.create({ trigger: step, start: 'top 68%', end: 'bottom 32%', toggleClass: { targets: card, className: 'on' } });
+});
+ScrollTrigger.create({ trigger: sections[0].querySelector('.step'), start: 'top top', end: 'bottom 32%', toggleClass: { targets: sections[0].querySelector('.card'), className: 'on' } });
+ScrollTrigger.addEventListener('refresh', measure);
+navLinks.forEach(a => a.addEventListener('click', e => { e.preventDefault(); lenis.scrollTo(a.getAttribute('href'), { duration: 2.2 }); }));
+$('#toTop').onclick = () => lenis.scrollTo(0, { duration: 3 });
+
+let gT = 0, gS = 0;
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h); composer.setSize(w, h); bloom.resolution.set(w, h);
+  camera.aspect = w / h; camera.updateProjectionMatrix(); lens.uniforms.uRes.value.set(w, h);
+  measure();
+}
+addEventListener('resize', resize);
+
+const pipEl = $('#pip');
+function renderPip() {
+  const r = pipEl.getBoundingClientRect();
+  if (r.width < 20 || r.bottom < 0 || r.top > innerHeight || !pipEl.classList.contains('on')) return;
+  const sp = del.scope.position;
+  endoCam.position.set(sp.x + 0.25, sp.y - 0.05, sp.z - 0.08);
+  endoCam.lookAt(0, 0, Z_HERO - 2.5);
+  endoCam.aspect = r.width / r.height; endoCam.updateProjectionMatrix();
+  const keep = { cut: LU.uCutX.value, head: LU.uHead.value, key: LU.uKey.value, fog: LU.uFogK.value, hi: HU.uInside.value, hh: HU.uHead.value, hk: HU.uKey.value, grid: LU.uGridA.value, hp: headLight.position.clone(), hint: headLight.intensity, kint: keyLight.intensity };
+  const heat = LU.uHeat.value;
+  LU.uCutX.value = 99; LU.uHead.value = 1.8; LU.uKey.value = 0; LU.uFogK.value = 0.02; LU.uGridA.value = 0; LU.uHeat.value = 0;
+  HU.uInside.value = 1; HU.uHead.value = 1.6; HU.uKey.value = 0;
+  LIGHT.uCam.value.copy(endoCam.position); headLight.position.copy(endoCam.position); headLight.intensity = 5; keyLight.intensity = 0;
+  const vis = del.beam.visible; del.beam.visible = false;
+  renderer.setScissorTest(true);
+  renderer.setViewport(r.left, innerHeight - r.bottom, r.width, r.height);
+  renderer.setScissor(r.left, innerHeight - r.bottom, r.width, r.height);
+  renderer.render(scene, endoCam);
+  renderer.setScissorTest(false); renderer.setViewport(0, 0, innerWidth, innerHeight);
+  del.beam.visible = vis;
+  LU.uHeat.value = heat; LU.uCutX.value = keep.cut; LU.uHead.value = keep.head; LU.uKey.value = keep.key; LU.uFogK.value = keep.fog; LU.uGridA.value = keep.grid;
+  HU.uInside.value = keep.hi; HU.uHead.value = keep.hh; HU.uKey.value = keep.hk;
+  LIGHT.uCam.value.copy(camera.position); headLight.position.copy(keep.hp); headLight.intensity = keep.hint; keyLight.intensity = keep.kint;
+}
+
+// adaptive resolution: if the first ~2 s run slower than 45 fps, drop the pixel ratio once
+let perfN = 0, perfT = 0;
+function adaptQuality(dt) {
+  if (perfN < 0) return;
+  if (++perfN > 20) perfT += dt;
+  if (perfN === 140) {
+    if (perfT / 120 > 1 / 45) { const pr = Math.max(1, DPR * 0.66); renderer.setPixelRatio(pr); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight); }
+    perfN = -1;
+  }
+}
+const clock = new THREE.Clock();
+let frames = 0, fpsT = 0, simT = 0;
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  simT += dt;
+  gT = gFromScroll(lenis.scroll ?? scrollY);
+  gS = damp(gS, gT, 7, dt);
+  const st = updateScene(gS, simT, dt);
+  const act = Math.min(4, Math.floor(gT + 0.02));
+  setAct(act);
+  lens.uniforms.uTime.value = simT;
+  composer.render(dt);
+  if (act === 3) renderPip();
+  adaptQuality(dt);
+  // instruments
+  telemetry(simT, dt);
+  if (act === 1) trilemmaHUD();
+  if (act === 2) programmingHUD(st.c, st.cs, simT);
+  if (act === 3) deploymentHUD(st.D);
+  if (act === 4) nnHUD(simT);
+  const docH = document.documentElement.scrollHeight - innerHeight;
+  const pr = clamp((lenis.scroll ?? scrollY) / Math.max(1, docH));
+  txt('progTxt', String(Math.round(pr * 100)).padStart(3, '0') + '%'); wid('progBar', pr);
+  frames++; fpsT += dt; if (fpsT > 0.5) { txt('fps', Math.round(frames / fpsT) + ' FPS'); frames = 0; fpsT = 0; }
+}
+setInterval(() => { const d = new Date(); txt('clock', d.toTimeString().slice(0, 8)); }, 500);
+
+// loader: compile every program up front, then start
+const ld = (p, m) => { $('#ldbar').style.width = p + '%'; txt('ldp', String(p)); if (m) txt('ldmsg', m); };
+ld(35, 'compiling procedural shaders');
+requestAnimationFrame(() => {
+  measure(); setModel('yeoh');
+  for (const k in S) S[k].visible = true; stage.grp.visible = chart.grp.visible = del.grp.visible = true;
+  renderer.compile(scene, camera);
+  ld(80, 'warming render targets');
+  requestAnimationFrame(() => {
+    updateScene(0, 0, 0.016); composer.render(0.016);
+    ld(100, 'twin online');
+    setTimeout(() => $('#loader').classList.add('done'), 350);
+    gsap.ticker.add(frame);
+  });
+});
+</script>
+</body>
+</html>
